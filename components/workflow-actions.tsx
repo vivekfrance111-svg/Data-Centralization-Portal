@@ -7,13 +7,13 @@ import { Check, Send, X, ArrowUpCircle } from "lucide-react"
 
 interface WorkflowProps {
   entry: any
-  user: { role: string }
+  // Change: Make user optional so it doesn't crash if loading
+  user?: { role: string } 
   onUpdate: () => void
 }
 
 export function WorkflowActions({ entry, user, onUpdate }: WorkflowProps) {
   
-  // The function that actually changes the status in Supabase
   async function updateStatus(newStatus: string) {
     try {
       const { error } = await supabase
@@ -24,21 +24,25 @@ export function WorkflowActions({ entry, user, onUpdate }: WorkflowProps) {
       if (error) throw error
 
       toast.success(`Entry marked as ${newStatus.replace('_', ' ')}`)
-      onUpdate() // This tells the main page to refresh the list instantly
+      onUpdate()
     } catch (err: any) {
       console.error("Workflow Error:", err)
       toast.error("Failed to update status.")
     }
   }
 
-  const isAdmin = user?.role === "admin"
-  const isReviewer = user?.role === "reviewer" || isAdmin
-  const isAuthor = user?.role === "author" || isAdmin
+  // CRITICAL CHANGE: Added ?. to prevent "Cannot read property 'role' of undefined"
+  // We also force the check to lowercase to handle typos in Supabase
+  const currentRole = user?.role?.toLowerCase() || "author"
+
+  const isAdmin = currentRole === "admin"
+  const isReviewer = currentRole === "reviewer" || isAdmin
+  const isAuthor = currentRole === "author" || isAdmin
 
   return (
     <div className="flex items-center gap-2">
       
-      {/* AUTHORS: Can submit their drafts for review */}
+      {/* AUTHORS: Can submit their drafts */}
       {entry.status === "draft" && isAuthor && (
         <Button size="sm" variant="outline" onClick={() => updateStatus("pending_review")}>
           <Send className="w-4 h-4 mr-1 text-blue-500" />
@@ -53,7 +57,7 @@ export function WorkflowActions({ entry, user, onUpdate }: WorkflowProps) {
             <X className="w-4 h-4 mr-1 text-red-500" />
             Reject
           </Button>
-          <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => updateStatus("published")}>
+          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => updateStatus("published")}>
             <Check className="w-4 h-4 mr-1" />
             Publish
           </Button>
