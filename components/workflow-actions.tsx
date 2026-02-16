@@ -5,15 +5,15 @@ import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Check, Send, X, ArrowUpCircle } from "lucide-react"
 
-interface WorkflowProps {
-  entry: any
-  // Change: Make user optional so it doesn't crash if loading
-  user?: { role: string } 
-  onUpdate: () => void
-}
-
-export function WorkflowActions({ entry, user, onUpdate }: WorkflowProps) {
+export function WorkflowActions({ entry, user, onUpdate }: any) {
   
+  // 1. Safety check for the status
+  const status = entry?.status || "draft"
+  
+  // 2. Safety check for the role
+  const rawRole = typeof user?.role === 'string' ? user.role : "author"
+  const currentRole = rawRole.trim().toLowerCase()
+
   async function updateStatus(newStatus: string) {
     try {
       const { error } = await supabase
@@ -22,53 +22,42 @@ export function WorkflowActions({ entry, user, onUpdate }: WorkflowProps) {
         .eq("id", entry.id)
 
       if (error) throw error
-
-      toast.success(`Entry marked as ${newStatus.replace('_', ' ')}`)
+      toast.success("Updated!")
       onUpdate()
-    } catch (err: any) {
-      console.error("Workflow Error:", err)
-      toast.error("Failed to update status.")
+    } catch (err) {
+      toast.error("Update failed.")
     }
   }
-
-  // CRITICAL CHANGE: Added ?. to prevent "Cannot read property 'role' of undefined"
-  // We also force the check to lowercase to handle typos in Supabase
-  const currentRole = user?.role?.toLowerCase() || "author"
 
   const isAdmin = currentRole === "admin"
   const isReviewer = currentRole === "reviewer" || isAdmin
   const isAuthor = currentRole === "author" || isAdmin
 
+  // If role isn't loaded yet, show nothing to prevent crashes
+  if (!currentRole) return null
+
   return (
     <div className="flex items-center gap-2">
-      
-      {/* AUTHORS: Can submit their drafts */}
-      {entry.status === "draft" && isAuthor && (
+      {status === "draft" && isAuthor && (
         <Button size="sm" variant="outline" onClick={() => updateStatus("pending_review")}>
-          <Send className="w-4 h-4 mr-1 text-blue-500" />
-          Submit
+          <Send className="w-4 h-4 mr-1 text-blue-500" /> Submit
         </Button>
       )}
 
-      {/* ADMINS/REVIEWERS: Can Approve or Reject */}
-      {entry.status === "pending_review" && isReviewer && (
+      {status === "pending_review" && isReviewer && (
         <>
-          <Button size="sm" variant="outline" className="hover:bg-red-50" onClick={() => updateStatus("draft")}>
-            <X className="w-4 h-4 mr-1 text-red-500" />
-            Reject
+          <Button size="sm" variant="outline" onClick={() => updateStatus("draft")}>
+            <X className="w-4 h-4 mr-1 text-red-500" /> Reject
           </Button>
-          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => updateStatus("published")}>
-            <Check className="w-4 h-4 mr-1" />
-            Publish
+          <Button size="sm" className="bg-green-600 text-white" onClick={() => updateStatus("published")}>
+            <Check className="w-4 h-4 mr-1" /> Publish
           </Button>
         </>
       )}
 
-      {/* ADMINS ONLY: Can take a published item down */}
-      {entry.status === "published" && isAdmin && (
+      {status === "published" && isAdmin && (
         <Button size="sm" variant="ghost" onClick={() => updateStatus("draft")}>
-          <ArrowUpCircle className="w-4 h-4 mr-1 text-muted-foreground" />
-          Revert to Draft
+          <ArrowUpCircle className="w-4 h-4 mr-1" /> Revert
         </Button>
       )}
     </div>
