@@ -1,35 +1,24 @@
-import { Badge } from "@/components/ui/badge"
-import type { WorkflowStatus } from "@/lib/types"
-import { cn } from "@/lib/utils"
+"use client"
 
-const statusConfig: Record<WorkflowStatus, { label: string; className: string }> = {
-  draft: {
-    label: "Draft",
-    className: "bg-muted text-muted-foreground border-border",
-  },
-  in_review: {
-    label: "In Review",
-    className: "bg-info/10 text-info border-info/30",
-  },
-  approved: {
-    label: "Approved",
-    className: "bg-success/10 text-success border-success/30",
-  },
-  published: {
-    label: "Published",
-    className: "bg-primary/10 text-primary border-primary/30",
-  },
-  rejected: {
-    label: "Rejected",
-    className: "bg-destructive/10 text-destructive border-destructive/30",
-  },
-}
+export function StatusBadge({ status }: { status?: string }) {
+  // Fallback to draft if status is completely missing
+  const safeStatus = (status || "draft").toLowerCase()
 
-export function StatusBadge({ status }: { status: WorkflowStatus }) {
-  const config = statusConfig[status]
+  // Define the colors for every possible state
+  const styles: Record<string, string> = {
+    draft: "bg-slate-100 text-slate-700 border-slate-200",
+    pending_review: "bg-yellow-100 text-yellow-800 border-yellow-200",
+    published: "bg-green-100 text-green-700 border-green-200",
+    rejected: "bg-red-100 text-red-700 border-red-200",
+  }
+
+  // If the database has a weird status we don't recognize, default to draft styles to prevent a crash
+  const activeStyle = styles[safeStatus] || styles.draft
+  const displayLabel = safeStatus.replace("_", " ")
+
   return (
-    <Badge variant="outline" className={cn("font-medium", config.className)}>
-      {config.label}
-    </Badge>
+    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border uppercase tracking-wider ${activeStyle}`}>
+      {displayLabel}
+    </span>
   )
 }

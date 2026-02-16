@@ -21,7 +21,6 @@ export default function AcademicResearchPage() {
   const [entries, setEntries] = useState<AcademicEntry[]>([])
   const [isLoadingData, setIsLoadingData] = useState(true)
   
-  // Auth State
   const [userRole, setUserRole] = useState<string>("author")
   const [userEmail, setUserEmail] = useState<string>("")
 
@@ -31,38 +30,27 @@ export default function AcademicResearchPage() {
     department: "AI & Data Science",
   })
 
-  // CRASH-PROOF ROLE FETCHING
   const fetchUserPermissions = useCallback(async () => {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      if (authError) throw authError
-
+      const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setUserEmail(user.email || "")
         
-        // Using maybeSingle() prevents the 406 crash if the row doesn't exist
-        const { data: roleData, error: dbError } = await supabase
+        const { data: roleData } = await supabase
           .from("user_roles")
           .select("role")
           .eq("email", user.email)
           .maybeSingle() 
         
-        if (dbError) {
-          console.error("Table error (User roles might be missing):", dbError.message)
-          setUserRole("author")
-        } else if (roleData && roleData.role) {
+        if (roleData && roleData.role) {
           setUserRole(roleData.role.trim().toLowerCase())
-        } else {
-          setUserRole("author")
         }
       }
     } catch (err) {
       console.error("Auth process error:", err)
-      setUserRole("author")
     }
   }, [])
 
-  // CRASH-PROOF DATA FETCHING
   const fetchEntries = useCallback(async () => {
     try {
       setIsLoadingData(true)
@@ -74,7 +62,6 @@ export default function AcademicResearchPage() {
       if (error) throw error
       
       if (data) {
-        // Safe mapping to prevent null reference crashes
         const formatted: AcademicEntry[] = data.map((item) => ({
           id: item.id?.toString() || Math.random().toString(),
           type: "academic",
@@ -152,7 +139,6 @@ export default function AcademicResearchPage() {
     <AuthGuard>
       <div className="flex flex-col gap-8 p-6 md:p-10 max-w-7xl mx-auto min-h-screen bg-slate-50/50">
         
-        {/* Professional Navbar */}
         <nav className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border shadow-sm border-slate-200">
           <div className="flex items-center gap-4">
             <div className="bg-primary/10 p-3 rounded-xl">
@@ -180,7 +166,6 @@ export default function AcademicResearchPage() {
           </div>
         </nav>
 
-        {/* Multi-Step Submission Form */}
         {showForm && (
           <Card className="border-primary/20 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500">
             <CardHeader className="bg-slate-50/50 border-b">
@@ -238,7 +223,6 @@ export default function AcademicResearchPage() {
           </Card>
         )}
 
-        {/* Submissions Registry List */}
         <Card className="shadow-sm border-slate-200 overflow-hidden">
           <CardHeader className="bg-white border-b py-5">
             <div className="flex items-center justify-between">
@@ -275,7 +259,6 @@ export default function AcademicResearchPage() {
                         <span className="text-primary/70">{entry.department}</span>
                       </div>
                     </div>
-                    {/* Crash-proof passing of user role */}
                     <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
                   </div>
                 ))}
