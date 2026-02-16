@@ -6,67 +6,50 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge" // Added missing import
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
-import { Trophy, Plus, Loader2, TrendingUp, Database, LayoutGrid } from "lucide-react"
+import { Handshake, Plus, Loader2, ChevronRight, LayoutGrid, Globe, Building2, Database } from "lucide-react"
 import { toast } from "sonner"
 import AuthGuard from "@/components/auth-guard"
 
-export default function RankingsPage() {
+export default function PartnershipsPage() {
   const [showForm, setShowForm] = useState(false)
+  const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [entries, setEntries] = useState<any[]>([])
   const [isLoadingData, setIsLoadingData] = useState(true)
-  
   const [userRole, setUserRole] = useState<string>("author")
   const [userEmail, setUserEmail] = useState<string>("")
 
   const [formData, setFormData] = useState({
-    rankingBody: "",
-    programName: "",
-    year: "2026",
-    rank: "",
-    category: "",
+    partnerName: "",
+    partnerType: "corporate",
+    country: "",
+    description: "",
+    contactPerson: "",
   })
 
-  // Fetch real user permissions
   const fetchUserPermissions = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setUserEmail(user.email || "")
-        const { data: roleData } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("email", user.email)
-          .maybeSingle()
-        
+        const { data: roleData } = await supabase.from("user_roles").select("role").eq("email", user.email).maybeSingle()
         if (roleData) setUserRole(roleData.role.trim().toLowerCase())
       }
-    } catch (err) {
-      console.error("Auth error:", err)
-    }
+    } catch (err) { console.error(err) }
   }, [])
 
-  // Fetch REAL entries from portal_data filtered by 'ranking'
   const fetchEntries = useCallback(async () => {
     try {
       setIsLoadingData(true)
-      const { data, error } = await supabase
-        .from("portal_data")
-        .select("*")
-        .eq("type", "ranking")
-        .order("created_at", { ascending: false })
-
+      const { data, error } = await supabase.from("portal_data").select("*").eq("type", "partnership").order("created_at", { ascending: false })
       if (error) throw error
       setEntries(data || [])
-    } catch (err) {
-      toast.error("Database sync failed.")
-    } finally {
-      setIsLoadingData(false)
-    }
+    } catch (err) { toast.error("Failed to load partnerships.") } finally { setIsLoadingData(false) }
   }, [])
 
   useEffect(() => {
@@ -74,154 +57,90 @@ export default function RankingsPage() {
     fetchEntries()
   }, [fetchUserPermissions, fetchEntries])
 
-  const handleSaveRanking = async () => {
-    if (!formData.rankingBody || !formData.rank) {
-      toast.error("Ranking Body and Rank are required.")
-      return
-    }
+  const updateField = (field: string, value: string) => setFormData((prev) => ({ ...prev, [field]: value }))
 
+  const handleSaveDraft = async () => {
+    if (!formData.partnerName || !formData.country) return toast.error("Name and Country required.")
     setIsSubmitting(true)
     try {
       const { error } = await supabase.from("portal_data").insert([{
-        type: "ranking",
-        title: `${formData.rankingBody} - ${formData.programName}`,
-        ranking_body: formData.rankingBody,
-        program_name: formData.programName,
-        publication_year: formData.year,
-        rank_score: formData.rank,
-        category: formData.category,
-        status: "draft",
-        created_by: userEmail
+        type: "partnership", title: formData.partnerName, partner_name: formData.partnerName,
+        partner_type: formData.partnerType, country: formData.country, description: formData.description,
+        status: "draft", created_by: userEmail
       }])
-
       if (error) throw error
-      toast.success("Saved to live registry!")
-      setShowForm(false)
-      setFormData({ rankingBody: "", programName: "", year: "2026", rank: "", category: "" })
+      toast.success("Partnership draft saved!")
+      setShowForm(false); setStep(1)
+      setFormData({ partnerName: "", partnerType: "corporate", country: "", description: "", contactPerson: "" })
       fetchEntries()
-    } catch (err) {
-      toast.error("Failed to save to database.")
-    } finally {
-      setIsSubmitting(false)
-    }
+    } catch (err) { toast.error("Failed to save.") } finally { setIsSubmitting(false) }
   }
 
   return (
     <AuthGuard>
       <div className="flex flex-col gap-8 w-full">
-        
-        {/* Module Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <div className="bg-amber-100 p-3 rounded-xl border border-amber-200 shadow-sm">
-              <Trophy className="h-7 w-7 text-amber-600" />
-            </div>
+            <div className="bg-emerald-100 p-3 rounded-xl"><Handshake className="h-7 w-7 text-emerald-600" /></div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900">Rankings & Accreditations</h1>
-                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 px-2">
-                  <Database className="h-3 w-3" /> Live Connection
-                </Badge>
+                <h1 className="text-2xl font-bold">Institutional Partnerships</h1>
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 gap-1"><Database className="h-3 w-3" /> Live</Badge>
               </div>
-              <p className="text-slate-500 text-sm mt-1 font-medium">Verified institutional performance and global standing.</p>
+              <p className="text-slate-500 text-sm mt-1">Global corporate and academic alliances.</p>
             </div>
           </div>
-          <Button onClick={() => setShowForm(!showForm)} className="bg-slate-900 hover:bg-slate-800 shadow-lg">
-            <Plus className="h-4 w-4 mr-1" /> New Entry
-          </Button>
+          <Button onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 mr-1" /> New Partnership</Button>
         </div>
 
-        {/* Entry Form */}
         {showForm && (
-          <Card className="border-amber-200 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
-            <CardHeader className="bg-amber-50/30 border-b py-4">
-              <CardTitle className="text-lg font-bold text-amber-900">New Performance Record</CardTitle>
+          <Card className="border-emerald-200 shadow-xl">
+            <CardHeader className="bg-emerald-50/30 border-b">
+              <CardTitle>Step {step}: {step === 1 ? "Details" : "Objectives"}</CardTitle>
             </CardHeader>
             <CardContent className="pt-8">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="md:col-span-2 space-y-2">
-                  <Label className="text-sm font-bold text-slate-700">Ranking Body / Accreditation *</Label>
-                  <Input className="h-12 border-slate-200" placeholder="e.g., Financial Times, QS World Rankings" value={formData.rankingBody} onChange={(e) => setFormData({...formData, rankingBody: e.target.value})} />
+              {step === 1 ? (
+                <div className="grid grid-cols-2 gap-8">
+                  <div className="col-span-2 space-y-2"><Label>Organization Name *</Label><Input value={formData.partnerName} onChange={(e) => updateField("partnerName", e.target.value)} /></div>
+                  <div className="space-y-2"><Label>Partner Type</Label>
+                    <Select value={formData.partnerType} onValueChange={(val) => updateField("partnerType", val)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="corporate">Corporate</SelectItem><SelectItem value="academic">Academic</SelectItem></SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2"><Label>Country *</Label><Input value={formData.country} onChange={(e) => updateField("country", e.target.value)} /></div>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-bold text-slate-700">Year *</Label>
-                  <Input className="h-12 border-slate-200" type="number" value={formData.year} onChange={(e) => setFormData({...formData, year: e.target.value})} />
+              ) : (
+                <div className="space-y-6">
+                  <div className="space-y-2"><Label>Strategic Description *</Label><Textarea className="min-h-[150px]" value={formData.description} onChange={(e) => updateField("description", e.target.value)} /></div>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-bold text-slate-700">Program / Category</Label>
-                  <Input className="h-12 border-slate-200" placeholder="e.g., MSc Data Science" value={formData.programName} onChange={(e) => setFormData({...formData, programName: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-bold text-slate-700">Rank / Score *</Label>
-                  <Input className="h-12 font-bold text-emerald-600 border-slate-200" placeholder="e.g., #3 or 5-Star" value={formData.rank} onChange={(e) => setFormData({...formData, rank: e.target.value})} />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-sm font-bold text-slate-700">Global Category</Label>
-                  <Input className="h-12 border-slate-200" placeholder="e.g., Global MBA" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 mt-10 pt-6 border-t">
+              )}
+              <div className="flex justify-end gap-3 mt-8 pt-6 border-t">
                 <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
-                <Button className="px-8 shadow-md" onClick={handleSaveRanking} disabled={isSubmitting}>
-                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Save to Registry
-                </Button>
+                {step === 1 ? <Button onClick={() => setStep(2)}>Next <ChevronRight className="ml-2 h-4 w-4" /></Button> : <Button onClick={handleSaveDraft} disabled={isSubmitting}>{isSubmitting ? <Loader2 className="animate-spin mr-2" /> : "Save"}</Button>}
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Database Registry Table */}
-        <Card className="shadow-sm border-slate-200 overflow-hidden">
-          <CardHeader className="bg-white border-b py-5 px-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <LayoutGrid className="h-5 w-5 text-slate-400" />
-                <CardTitle className="text-lg font-bold text-slate-800">Rankings Registry</CardTitle>
-              </div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{entries.length} Live Records</span>
-            </div>
+        <Card className="shadow-sm">
+          <CardHeader className="border-b py-5 flex flex-row items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2"><LayoutGrid className="h-5 w-5 text-slate-400" /> Registry</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {isLoadingData ? (
-              <div className="p-24 flex flex-col items-center justify-center gap-4 text-slate-400">
-                <Loader2 className="h-10 w-10 animate-spin text-amber-500/50" />
-                <p className="text-sm font-medium animate-pulse">Syncing with database...</p>
+            {isLoadingData ? <div className="p-20 flex justify-center"><Loader2 className="animate-spin text-emerald-500" /></div> : entries.length === 0 ? <div className="p-20 text-center text-slate-400">No alliances yet.</div> : (
+              <div className="divide-y">
+                {entries.map((entry) => (
+                  <div key={entry.id} className="p-6 flex items-center justify-between">
+                    <div className="space-y-3">
+                      <div className="flex gap-2"><StatusBadge status={entry.status} /><Badge variant="outline">{entry.partner_type}</Badge></div>
+                      <h3 className="text-lg font-bold">{entry.partner_name || entry.title}</h3>
+                      <div className="flex items-center gap-4 text-xs text-slate-500"><span className="flex gap-1"><Globe className="h-3 w-3" /> {entry.country}</span></div>
+                    </div>
+                    <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
+                  </div>
+                ))}
               </div>
-            ) : entries.length === 0 ? (
-              <div className="p-20 text-center text-slate-400 italic bg-slate-50/30">No real ranking data found in database.</div>
-            ) : (
-              <Table>
-                <TableHeader className="bg-slate-50/80">
-                  <TableRow>
-                    <TableHead className="w-[120px] px-6">Status</TableHead>
-                    <TableHead>Ranking Body</TableHead>
-                    <TableHead>Program</TableHead>
-                    <TableHead>Year</TableHead>
-                    <TableHead>Result</TableHead>
-                    <TableHead className="text-right px-6">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {entries.map((entry) => (
-                    <TableRow key={entry.id} className="hover:bg-slate-50/50 transition-colors">
-                      <TableCell className="px-6"><StatusBadge status={entry.status} /></TableCell>
-                      <TableCell className="font-extrabold text-slate-900">{entry.ranking_body || entry.title}</TableCell>
-                      <TableCell className="text-slate-600 font-medium">{entry.program_name || "Institutional"}</TableCell>
-                      <TableCell className="text-slate-500">{entry.publication_year || entry.year}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5 font-extrabold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-lg w-fit border border-emerald-100">
-                          <TrendingUp className="h-4 w-4" />
-                          {entry.rank_score || entry.rank}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right px-6">
-                        <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
             )}
           </CardContent>
         </Card>
