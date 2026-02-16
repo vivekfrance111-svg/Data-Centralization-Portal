@@ -1,283 +1,130 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { supabase } from "@/lib/supabase"
+import { useState, useCallback, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
-import { rankingSchema, type RankingEntry, type RankingFormData } from "@/lib/types"
-import { addEntry, getEntriesByType, getCurrentUser } from "@/lib/store"
-import { Trophy, Plus, AlertCircle, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { Trophy, Plus, Loader2, TrendingUp, Database, LayoutGrid } from "lucide-react"
 import { toast } from "sonner"
+import AuthGuard from "@/components/auth-guard"
 
-function RankTrend({ current, previous }: { current: string; previous?: string }) {
-  if (!previous) return <Minus className="h-3.5 w-3.5 text-muted-foreground" />
-  const curr = parseInt(current)
-  const prev = parseInt(previous)
-  if (isNaN(curr) || isNaN(prev)) return <Minus className="h-3.5 w-3.5 text-muted-foreground" />
-  if (curr < prev) return <TrendingUp className="h-3.5 w-3.5 text-success" />
-  if (curr > prev) return <TrendingDown className="h-3.5 w-3.5 text-destructive" />
-  return <Minus className="h-3.5 w-3.5 text-muted-foreground" />
-}
-
-export default function AccreditationsRankingsPage() {
-  const [tick, setTick] = useState(0)
+export default function RankingsPage() {
   const [showForm, setShowForm] = useState(false)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [formData, setFormData] = useState<Partial<RankingFormData>>({
-    year: "2026",
-    category: "Masters in AI",
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [entries, setEntries] = useState<any[]>([])
+  const [isLoadingData, setIsLoadingData] = useState(true)
+  const [userRole, setUserRole] = useState<string>("author")
+  const [userEmail, setUserEmail] = useState<string>("")
+
+  const [formData, setFormData] = useState({
+    rankingBody: "", programName: "", year: "2026", rank: "", category: "",
   })
 
-  const entries = getEntriesByType("ranking") as RankingEntry[]
-  const user = getCurrentUser()
+  const fetchUserPermissions = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setUserEmail(user.email || "")
+        const { data: roleData } = await supabase.from("user_roles").select("role").eq("email", user.email).maybeSingle()
+        if (roleData) setUserRole(roleData.role.trim().toLowerCase())
+      }
+    } catch (err) { console.error("Auth error:", err) }
+  }, [])
 
-  const refresh = useCallback(() => setTick((t) => t + 1), [])
+  const fetchEntries = useCallback(async () => {
+    try {
+      setIsLoadingData(true)
+      const { data, error } = await supabase.from("portal_data").select("*").eq("type", "ranking").order("created_at", { ascending: false })
+      if (error) throw error
+      setEntries(data || [])
+    } catch (err) { toast.error("Database sync failed.") } finally { setIsLoadingData(false) }
+  }, [])
 
-  function updateField(field: string, value: string) {
-    setFormData((prev) => ({ ...prev, [field]: value }))
-    setErrors((prev) => {
-      const next = { ...prev }
-      delete next[field]
-      return next
-    })
-  }
+  useEffect(() => {
+    fetchUserPermissions()
+    fetchEntries()
+  }, [fetchUserPermissions, fetchEntries])
 
-  function handleSaveDraft() {
-    const result = rankingSchema.safeParse(formData)
-    if (!result.success) {
-      const fieldErrors: Record<string, string> = {}
-      result.error.errors.forEach((e) => {
-        fieldErrors[e.path[0] as string] = e.message
-      })
-      setErrors(fieldErrors)
-      toast.error("Please fix the validation errors before saving.")
-      return
-    }
-
-    const entry: RankingEntry = {
-      id: `r${Date.now()}`,
-      type: "ranking",
-      status: "draft",
-      createdBy: user.id,
-      createdAt: new Date().toISOString().split("T")[0],
-      updatedAt: new Date().toISOString().split("T")[0],
-      ...result.data,
-    }
-
-    addEntry(entry)
-    toast.success("Ranking saved as draft successfully.")
-    setShowForm(false)
-    setFormData({ year: "2026", category: "Masters in AI" })
-    setErrors({})
-    refresh()
-  }
-
-  function FieldError({ field }: { field: string }) {
-    if (!errors[field]) return null
-    return (
-      <p className="text-xs text-destructive flex items-center gap-1 mt-1">
-        <AlertCircle className="h-3 w-3" />
-        {errors[field]}
-      </p>
-    )
+  const handleSaveRanking = async () => {
+    if (!formData.rankingBody || !formData.rank) return toast.error("Ranking Body and Rank are required.")
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase.from("portal_data").insert([{
+        type: "ranking", title: `${formData.rankingBody} - ${formData.programName}`, ranking_body: formData.rankingBody,
+        program_name: formData.programName, publication_year: formData.year, rank_score: formData.rank,
+        category: formData.category, status: "draft", created_by: userEmail
+      }])
+      if (error) throw error
+      toast.success("Saved to live registry!")
+      setShowForm(false)
+      setFormData({ rankingBody: "", programName: "", year: "2026", rank: "", category: "" })
+      fetchEntries()
+    } catch (err) { toast.error("Failed to save.") } finally { setIsSubmitting(false) }
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Trophy className="h-6 w-6 text-warning" />
-            Rankings & Accreditations
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Course rankings, visas, labels, and accreditation data
-          </p>
+    <AuthGuard>
+      <div className="flex flex-col gap-8 w-full">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="bg-amber-100 p-3 rounded-xl"><Trophy className="h-7 w-7 text-amber-600" /></div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold">Rankings & Accreditations</h1>
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 gap-1"><Database className="h-3 w-3" /> Live</Badge>
+              </div>
+            </div>
+          </div>
+          <Button onClick={() => setShowForm(!showForm)}><Plus className="h-4 w-4 mr-1" /> New Entry</Button>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          New Entry
-        </Button>
-      </div>
 
-      {/* Form */}
-      {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">New Ranking / Accreditation</CardTitle>
-            <CardDescription>Record a new ranking result or accreditation milestone</CardDescription>
+        {showForm && (
+          <Card className="border-amber-200 shadow-xl">
+            <CardHeader className="bg-amber-50/30 border-b"><CardTitle>New Performance Record</CardTitle></CardHeader>
+            <CardContent className="pt-8">
+              <div className="grid grid-cols-2 gap-8">
+                <div className="col-span-2 space-y-2"><Label>Ranking Body *</Label><Input value={formData.rankingBody} onChange={(e) => setFormData({...formData, rankingBody: e.target.value})} /></div>
+                <div className="space-y-2"><Label>Program</Label><Input value={formData.programName} onChange={(e) => setFormData({...formData, programName: e.target.value})} /></div>
+                <div className="space-y-2"><Label>Rank / Score *</Label><Input className="font-bold text-emerald-600" value={formData.rank} onChange={(e) => setFormData({...formData, rank: e.target.value})} /></div>
+              </div>
+              <div className="flex justify-end gap-3 mt-8 pt-6 border-t">
+                <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+                <Button onClick={handleSaveRanking} disabled={isSubmitting}>{isSubmitting ? "Saving..." : "Save"}</Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="shadow-sm">
+          <CardHeader className="border-b py-5 flex flex-row items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2"><LayoutGrid className="h-5 w-5 text-slate-400" /> Registry</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="rankingBody">Ranking Body *</Label>
-                <Input
-                  id="rankingBody"
-                  value={formData.rankingBody || ""}
-                  onChange={(e) => updateField("rankingBody", e.target.value)}
-                  placeholder="e.g., Le Figaro Etudiant"
-                />
-                <FieldError field="rankingBody" />
-              </div>
-              <div>
-                <Label htmlFor="programName">Program Name *</Label>
-                <Input
-                  id="programName"
-                  value={formData.programName || ""}
-                  onChange={(e) => updateField("programName", e.target.value)}
-                  placeholder="e.g., MSc Artificial Intelligence"
-                />
-                <FieldError field="programName" />
-              </div>
-              <div>
-                <Label htmlFor="year">Year *</Label>
-                <Input
-                  id="year"
-                  value={formData.year || ""}
-                  onChange={(e) => updateField("year", e.target.value)}
-                  placeholder="2026"
-                />
-                <FieldError field="year" />
-              </div>
-              <div>
-                <Label htmlFor="rank">Rank *</Label>
-                <Input
-                  id="rank"
-                  value={formData.rank || ""}
-                  onChange={(e) => updateField("rank", e.target.value)}
-                  placeholder="e.g., 3"
-                />
-                <FieldError field="rank" />
-              </div>
-              <div>
-                <Label htmlFor="previousRank">Previous Rank</Label>
-                <Input
-                  id="previousRank"
-                  value={formData.previousRank || ""}
-                  onChange={(e) => updateField("previousRank", e.target.value)}
-                  placeholder="e.g., 5"
-                />
-              </div>
-              <div>
-                <Label htmlFor="category">Category *</Label>
-                <Select
-                  value={formData.category}
-                  onValueChange={(v) => updateField("category", v)}
-                >
-                  <SelectTrigger id="category">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Masters in AI">Masters in AI</SelectItem>
-                    <SelectItem value="Undergraduate AI Programs">Undergraduate AI Programs</SelectItem>
-                    <SelectItem value="Data Science & AI">Data Science & AI</SelectItem>
-                    <SelectItem value="Business & Tech">Business & Tech</SelectItem>
-                    <SelectItem value="General University Ranking">General University Ranking</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FieldError field="category" />
-              </div>
-              <div>
-                <Label htmlFor="accreditationType">Accreditation Type</Label>
-                <Input
-                  id="accreditationType"
-                  value={formData.accreditationType || ""}
-                  onChange={(e) => updateField("accreditationType", e.target.value)}
-                  placeholder="e.g., RNCP Level 7, CGE Label"
-                />
-              </div>
-              <div>
-                <Label htmlFor="notes">Notes</Label>
-                <Input
-                  id="notes"
-                  value={formData.notes || ""}
-                  onChange={(e) => updateField("notes", e.target.value)}
-                  placeholder="Additional notes"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end mt-6 pt-4 border-t gap-2">
-              <Button variant="outline" onClick={() => { setShowForm(false); setErrors({}) }}>
-                Cancel
-              </Button>
-              <Button onClick={handleSaveDraft}>
-                Save as Draft
-              </Button>
-            </div>
+          <CardContent className="p-0">
+            {isLoadingData ? <div className="p-20 flex justify-center"><Loader2 className="animate-spin text-amber-500" /></div> : entries.length === 0 ? <div className="p-20 text-center text-slate-400">No data found.</div> : (
+              <Table>
+                <TableHeader><TableRow><TableHead>Status</TableHead><TableHead>Body</TableHead><TableHead>Program</TableHead><TableHead>Result</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {entries.map((entry) => (
+                    <TableRow key={entry.id}>
+                      <TableCell><StatusBadge status={entry.status} /></TableCell>
+                      <TableCell className="font-bold">{entry.ranking_body || entry.title}</TableCell>
+                      <TableCell>{entry.program_name || "Institutional"}</TableCell>
+                      <TableCell><div className="flex items-center gap-1 font-bold text-emerald-700"><TrendingUp className="h-3 w-3" />{entry.rank_score || entry.rank}</div></TableCell>
+                      <TableCell className="text-right"><WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Data Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Rankings Table</CardTitle>
-          <CardDescription>{entries.length} ranking entries</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Ranking Body</TableHead>
-                  <TableHead>Program</TableHead>
-                  <TableHead className="text-center">Year</TableHead>
-                  <TableHead className="text-center">Rank</TableHead>
-                  <TableHead className="text-center">Trend</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Accreditation</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell>
-                      <StatusBadge status={entry.status} />
-                    </TableCell>
-                    <TableCell className="font-medium">{entry.rankingBody}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{entry.programName}</TableCell>
-                    <TableCell className="text-center">{entry.year}</TableCell>
-                    <TableCell className="text-center font-bold">#{entry.rank}</TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <RankTrend current={entry.rank} previous={entry.previousRank} />
-                        {entry.previousRank && (
-                          <span className="text-xs text-muted-foreground">
-                            (was #{entry.previousRank})
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm">{entry.category}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {entry.accreditationType || "\u2014"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <WorkflowActions entry={entry} user={user} onUpdate={refresh} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      </div>
+    </AuthGuard>
   )
 }
