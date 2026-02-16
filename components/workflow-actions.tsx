@@ -1,127 +1,84 @@
 "use client"
 
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
-import { Send, CheckCircle, XCircle, Globe } from "lucide-react"
-import type { DataEntry, User } from "@/lib/types"
-import {
-  canSubmitForReview,
-  canReview,
-  canPublish,
-  updateEntryStatus,
-} from "@/lib/store"
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
+import { Check, Send, X } from "lucide-react"
 
-interface WorkflowActionsProps {
-  entry: DataEntry
-  user: User
-  onUpdate: () => void
-}
+// We expect the entry, the current user, and the refresh function from page.tsx
+export function WorkflowActions({ entry, user, onUpdate }: any) {
+  
+  // 1. The Supabase Update Function
+  async function updateStatus(newStatus: string) {
+    try {
+      const { error } = await supabase
+        .from("portal_data")
+        .update({ status: newStatus })
+        .eq("id", entry.id) // Find the exact row by its ID
 
-export function WorkflowActions({ entry, user, onUpdate }: WorkflowActionsProps) {
-  const [rejectOpen, setRejectOpen] = useState(false)
-  const [reason, setReason] = useState("")
+      if (error) throw error
 
-  const showSubmit = canSubmitForReview(entry, user)
-  const showReview = canReview(entry, user)
-  const showPublish = canPublish(entry, user)
+      toast.success(`Status updated to ${newStatus.replace('_', ' ')}`)
+      onUpdate() // This triggers fetchEntries() on your main page to refresh the UI
+    } catch (err: any) {
+      console.error("Error updating status:", err)
+      toast.error("Failed to update status.")
+    }
+  }
 
-  if (!showSubmit && !showReview && !showPublish) return null
+  // 2. Role-Based Logic (Who can see what buttons?)
+  // For now, we assume user.role exists. If not, you can hardcode this to test.
+  const isAuthor = user?.role === "author" || user?.role === "admin"
+  const isReviewer = user?.role === "reviewer" || user?.role === "admin"
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {showSubmit && (
-        <Button
-          size="sm"
-          onClick={() => {
-            updateEntryStatus(entry.id, "in_review", user.id)
-            onUpdate()
-          }}
-          className="bg-info text-info-foreground hover:bg-info/90"
+    <div className="flex items-center gap-2">
+      
+      {/* If it's a DRAFT, the Author can submit it for review */}
+      {entry.status === "draft" && isAuthor && (
+        <Button 
+          size="sm" 
+          onClick={() => updateStatus("pending_review")}
         >
-          <Send className="mr-1.5 h-3.5 w-3.5" />
+          <Send className="w-4 h-4 mr-1" />
           Submit for Review
         </Button>
       )}
 
-      {showReview && (
+      {/* If it's PENDING, the Reviewer can Approve or Reject it */}
+      {entry.status === "pending_review" && isReviewer && (
         <>
-          <Button
-            size="sm"
-            onClick={() => {
-              updateEntryStatus(entry.id, "approved", user.id)
-              onUpdate()
-            }}
-            className="bg-success text-success-foreground hover:bg-success/90"
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="text-destructive hover:text-destructive"
+            onClick={() => updateStatus("rejected")}
           >
-            <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
-            Approve
+            <X className="w-4 h-4 mr-1" />
+            Reject
           </Button>
-
-          <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="destructive">
-                <XCircle className="mr-1.5 h-3.5 w-3.5" />
-                Reject
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Reject Entry</DialogTitle>
-                <DialogDescription>
-                  Please provide a reason for rejecting this entry. The author will be notified.
-                </DialogDescription>
-              </DialogHeader>
-              <Textarea
-                placeholder="Reason for rejection..."
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                className="min-h-[100px]"
-              />
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setRejectOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  disabled={!reason.trim()}
-                  onClick={() => {
-                    updateEntryStatus(entry.id, "rejected", user.id, reason)
-                    setReason("")
-                    setRejectOpen(false)
-                    onUpdate()
-                  }}
-                >
-                  Confirm Rejection
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <Button 
+            size="sm" 
+            className="bg-green-600 hover:bg-green-700 text-white"
+            onClick={() => updateStatus("published")}
+          >
+            <Check className="w-4 h-4 mr-1" />
+            Publish
+          </Button>
         </>
       )}
 
-      {showPublish && (
-        <Button
-          size="sm"
-          onClick={() => {
-            updateEntryStatus(entry.id, "published", user.id)
-            onUpdate()
-          }}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
+      {/* If it's PUBLISHED, maybe an Admin can revert it to a draft */}
+      {entry.status === "published" && user?.role === "admin" && (
+        <Button 
+          size="sm" 
+          variant="outline"
+          onClick={() => updateStatus("draft")}
         >
-          <Globe className="mr-1.5 h-3.5 w-3.5" />
-          Publish
+          Revert to Draft
         </Button>
       )}
+      
     </div>
   )
 }
