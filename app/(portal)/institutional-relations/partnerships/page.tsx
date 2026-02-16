@@ -1,275 +1,259 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { supabase } from "@/lib/supabase"
+import { useState, useCallback, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge" // Added the missing import
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
-import { partnershipSchema, type PartnershipEntry, type PartnershipFormData } from "@/lib/types"
-import { addEntry, getEntriesByType, getCurrentUser } from "@/lib/store"
-import { Handshake, Plus, AlertCircle, Building2, GraduationCap, Landmark, Heart } from "lucide-react"
+import { Handshake, Plus, Loader2, ChevronRight, LayoutGrid, Globe, Building2 } from "lucide-react"
 import { toast } from "sonner"
-
-const partnerTypeIcons = {
-  corporate: Building2,
-  academic: GraduationCap,
-  government: Landmark,
-  ngo: Heart,
-}
+import AuthGuard from "@/components/auth-guard"
 
 export default function PartnershipsPage() {
-  const [tick, setTick] = useState(0)
   const [showForm, setShowForm] = useState(false)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [formData, setFormData] = useState<Partial<PartnershipFormData>>({
+  const [step, setStep] = useState(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [entries, setEntries] = useState<any[]>([])
+  const [isLoadingData, setIsLoadingData] = useState(true)
+  
+  const [userRole, setUserRole] = useState<string>("author")
+  const [userEmail, setUserEmail] = useState<string>("")
+
+  const [formData, setFormData] = useState({
+    partnerName: "",
     partnerType: "corporate",
+    country: "",
+    description: "",
+    startDate: "2026-01-01",
+    contactPerson: "",
   })
 
-  const entries = getEntriesByType("partnership") as PartnershipEntry[]
-  const user = getCurrentUser()
+  // Auth & Permissions
+  const fetchUserPermissions = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setUserEmail(user.email || "")
+        const { data: roleData } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("email", user.email)
+          .maybeSingle()
+        
+        if (roleData) setUserRole(roleData.role.trim().toLowerCase())
+      }
+    } catch (err) {
+      console.error("Auth error:", err)
+    }
+  }, [])
 
-  const refresh = useCallback(() => setTick((t) => t + 1), [])
+  // Database Fetching
+  const fetchEntries = useCallback(async () => {
+    try {
+      setIsLoadingData(true)
+      const { data, error } = await supabase
+        .from("portal_data")
+        .select("*")
+        .eq("type", "partnership")
+        .order("created_at", { ascending: false })
 
-  function updateField(field: string, value: string) {
+      if (error) throw error
+      setEntries(data || [])
+    } catch (err) {
+      toast.error("Failed to load partnerships.")
+    } finally {
+      setIsLoadingData(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchUserPermissions()
+    fetchEntries()
+  }, [fetchUserPermissions, fetchEntries])
+
+  const updateField = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
-    setErrors((prev) => {
-      const next = { ...prev }
-      delete next[field]
-      return next
-    })
   }
 
-  function handleSaveDraft() {
-    const result = partnershipSchema.safeParse(formData)
-    if (!result.success) {
-      const fieldErrors: Record<string, string> = {}
-      result.error.errors.forEach((e) => {
-        fieldErrors[e.path[0] as string] = e.message
-      })
-      setErrors(fieldErrors)
-      toast.error("Please fix the validation errors before saving.")
+  const handleSaveDraft = async () => {
+    setIsSubmitting(true)
+    if (!formData.partnerName || !formData.country) {
+      toast.error("Partner Name and Country are required.")
+      setIsSubmitting(false)
       return
     }
 
-    const entry: PartnershipEntry = {
-      id: `p${Date.now()}`,
-      type: "partnership",
-      status: "draft",
-      createdBy: user.id,
-      createdAt: new Date().toISOString().split("T")[0],
-      updatedAt: new Date().toISOString().split("T")[0],
-      ...result.data,
+    try {
+      const { error } = await supabase.from("portal_data").insert([{
+        type: "partnership",
+        title: formData.partnerName, 
+        partner_name: formData.partnerName,
+        partner_type: formData.partnerType,
+        country: formData.country,
+        description: formData.description,
+        status: "draft",
+        created_by: userEmail
+      }])
+
+      if (error) throw error
+      toast.success("Partnership draft saved!")
+      setShowForm(false)
+      setStep(1)
+      setFormData({
+        partnerName: "",
+        partnerType: "corporate",
+        country: "",
+        description: "",
+        startDate: "2026-01-01",
+        contactPerson: "",
+      })
+      fetchEntries()
+    } catch (err) {
+      toast.error("Failed to save.")
+    } finally {
+      setIsSubmitting(false)
     }
-
-    addEntry(entry)
-    toast.success("Partnership saved as draft successfully.")
-    setShowForm(false)
-    setFormData({ partnerType: "corporate" })
-    setErrors({})
-    refresh()
-  }
-
-  function FieldError({ field }: { field: string }) {
-    if (!errors[field]) return null
-    return (
-      <p className="text-xs text-destructive flex items-center gap-1 mt-1">
-        <AlertCircle className="h-3 w-3" />
-        {errors[field]}
-      </p>
-    )
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Handshake className="h-6 w-6 text-success" />
-            Partnerships
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Manage corporate, academic, and institutional partnerships
-          </p>
+    <AuthGuard>
+      <div className="flex flex-col gap-8 w-full">
+        
+        {/* Module Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+              <Handshake className="h-6 w-6 text-primary" />
+              Institutional Partnerships
+            </h1>
+            <p className="text-slate-500 mt-1">Manage global corporate and academic alliances.</p>
+          </div>
+          <Button onClick={() => setShowForm(!showForm)} className="shadow-md">
+            <Plus className="h-4 w-4 mr-1" /> New Partnership
+          </Button>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          New Partnership
-        </Button>
-      </div>
 
-      {/* Submission Form */}
-      {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">New Partnership Entry</CardTitle>
-            <CardDescription>Enter details about the corporate or institutional partnership</CardDescription>
+        {/* Multi-Step Form */}
+        {showForm && (
+          <Card className="border-primary/20 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500">
+            <CardHeader className="bg-slate-50/50 border-b">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-xl font-bold">Register New Alliance</CardTitle>
+                <div className="flex gap-2">
+                  <div className={`h-2 w-12 rounded-full ${step === 1 ? 'bg-primary' : 'bg-slate-200'}`} />
+                  <div className={`h-2 w-12 rounded-full ${step === 2 ? 'bg-primary' : 'bg-slate-200'}`} />
+                </div>
+              </div>
+              <CardDescription>Step {step}: {step === 1 ? "Organization Details" : "Strategic Objectives"}</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-8">
+              {step === 1 ? (
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="md:col-span-2 space-y-2">
+                        <Label className="text-sm font-semibold">Partner Organization Name *</Label>
+                        <Input className="h-12" placeholder="e.g., Microsoft France, MIT, etc." value={formData.partnerName} onChange={(e) => updateField("partnerName", e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm font-semibold">Partner Type</Label>
+                        <Select value={formData.partnerType} onValueChange={(val) => updateField("partnerType", val)}>
+                          <SelectTrigger className="h-12">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="corporate">Corporate</SelectItem>
+                            <SelectItem value="academic">Academic</SelectItem>
+                            <SelectItem value="government">Government</SelectItem>
+                          </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm font-semibold">Country / Region *</Label>
+                        <Input className="h-12" placeholder="France, Global, etc." value={formData.country} onChange={(e) => updateField("country", e.target.value)} />
+                    </div>
+                 </div>
+              ) : (
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Strategic Description *</Label>
+                      <Textarea className="min-h-[180px]" placeholder="Outline the main goals of this partnership..." value={formData.description} onChange={(e) => updateField("description", e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Main Contact Person</Label>
+                      <Input className="h-12" placeholder="Name of primary stakeholder" value={formData.contactPerson} onChange={(e) => updateField("contactPerson", e.target.value)} />
+                    </div>
+                </div>
+              )}
+              <div className="flex justify-end gap-4 mt-10 pt-6 border-t">
+                <Button variant="ghost" onClick={() => { setShowForm(false); setStep(1); }}>Cancel</Button>
+                {step === 1 ? (
+                  <Button className="px-10 h-12" onClick={() => setStep(2)}>Next <ChevronRight className="ml-2 h-4 w-4" /></Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="h-12" onClick={() => setStep(1)}>Back</Button>
+                    <Button className="px-10 h-12 shadow-lg" onClick={handleSaveDraft} disabled={isSubmitting}>
+                      {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : "Save Partnership"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Registry List */}
+        <Card className="shadow-sm border-slate-200 overflow-hidden">
+          <CardHeader className="bg-white border-b py-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <LayoutGrid className="h-5 w-5 text-slate-400" />
+                <CardTitle className="text-lg font-bold text-slate-800">Partnership Registry</CardTitle>
+              </div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{entries.length} Alliances</span>
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <Label htmlFor="partnerName">Partner Name *</Label>
-                <Input
-                  id="partnerName"
-                  value={formData.partnerName || ""}
-                  onChange={(e) => updateField("partnerName", e.target.value)}
-                  placeholder="Company or institution name"
-                />
-                <FieldError field="partnerName" />
+          <CardContent className="p-0">
+            {isLoadingData ? (
+              <div className="p-24 flex flex-col items-center justify-center gap-4 text-slate-400">
+                <Loader2 className="h-10 w-10 animate-spin text-primary/40" />
+                <p className="text-sm font-medium">Loading alliance data...</p>
               </div>
-              <div>
-                <Label htmlFor="partnerType">Partner Type *</Label>
-                <Select
-                  value={formData.partnerType}
-                  onValueChange={(v) => updateField("partnerType", v)}
-                >
-                  <SelectTrigger id="partnerType">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="corporate">Corporate</SelectItem>
-                    <SelectItem value="academic">Academic</SelectItem>
-                    <SelectItem value="government">Government</SelectItem>
-                    <SelectItem value="ngo">NGO / Non-Profit</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FieldError field="partnerType" />
+            ) : entries.length === 0 ? (
+              <div className="p-20 text-center text-slate-400 italic bg-slate-50/30">No partnerships registered yet.</div>
+            ) : (
+              <div className="divide-y divide-slate-100 bg-white">
+                {entries.map((entry) => (
+                  <div key={entry.id} className="p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all hover:bg-slate-50/50 group">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={entry.status} />
+                        <Badge variant="outline" className="text-[10px] uppercase font-bold text-slate-400 tracking-tight">
+                          {entry.partner_type || 'corporate'}
+                        </Badge>
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900 leading-tight group-hover:text-primary transition-colors">
+                        {entry.partner_name || entry.title}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 font-medium">
+                        <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" /> {entry.country}</span>
+                        <span className="h-1 w-1 rounded-full bg-slate-300" />
+                        <span className="flex items-center gap-1.5 capitalize"><Building2 className="h-3.5 w-3.5" /> {entry.partner_type} Alliance</span>
+                      </div>
+                    </div>
+                    {/* Role-Based Workflow Actions */}
+                    <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
+                  </div>
+                ))}
               </div>
-              <div>
-                <Label htmlFor="country">Country *</Label>
-                <Input
-                  id="country"
-                  value={formData.country || ""}
-                  onChange={(e) => updateField("country", e.target.value)}
-                  placeholder="e.g., France"
-                />
-                <FieldError field="country" />
-              </div>
-              <div>
-                <Label htmlFor="startDate">Start Date *</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={formData.startDate || ""}
-                  onChange={(e) => updateField("startDate", e.target.value)}
-                />
-                <FieldError field="startDate" />
-              </div>
-              <div>
-                <Label htmlFor="endDate">End Date</Label>
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={formData.endDate || ""}
-                  onChange={(e) => updateField("endDate", e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="contactPerson">Contact Person *</Label>
-                <Input
-                  id="contactPerson"
-                  value={formData.contactPerson || ""}
-                  onChange={(e) => updateField("contactPerson", e.target.value)}
-                  placeholder="Primary contact name"
-                />
-                <FieldError field="contactPerson" />
-              </div>
-              <div>
-                <Label htmlFor="contactEmail">Contact Email *</Label>
-                <Input
-                  id="contactEmail"
-                  type="email"
-                  value={formData.contactEmail || ""}
-                  onChange={(e) => updateField("contactEmail", e.target.value)}
-                  placeholder="contact@example.com"
-                />
-                <FieldError field="contactEmail" />
-              </div>
-              <div className="md:col-span-2">
-                <Label htmlFor="strategicObjectives">Strategic Objectives *</Label>
-                <Textarea
-                  id="strategicObjectives"
-                  value={formData.strategicObjectives || ""}
-                  onChange={(e) => updateField("strategicObjectives", e.target.value)}
-                  placeholder="Key strategic objectives of this partnership..."
-                  className="min-h-[80px]"
-                />
-                <FieldError field="strategicObjectives" />
-              </div>
-              <div className="md:col-span-2">
-                <Label htmlFor="description">Description *</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description || ""}
-                  onChange={(e) => updateField("description", e.target.value)}
-                  placeholder="Detailed description of the partnership..."
-                  className="min-h-[100px]"
-                />
-                <FieldError field="description" />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end mt-6 pt-4 border-t gap-2">
-              <Button variant="outline" onClick={() => { setShowForm(false); setErrors({}) }}>
-                Cancel
-              </Button>
-              <Button onClick={handleSaveDraft}>
-                Save as Draft
-              </Button>
-            </div>
+            )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Existing Entries */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">All Partnerships</CardTitle>
-          <CardDescription>{entries.length} partnership entries</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-3">
-            {entries.map((entry) => {
-              const TypeIcon = partnerTypeIcons[entry.partnerType]
-              return (
-                <div
-                  key={entry.id}
-                  className="rounded-lg border p-4 hover:bg-muted/30 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <StatusBadge status={entry.status} />
-                        <span className="text-xs text-muted-foreground capitalize flex items-center gap-1">
-                          <TypeIcon className="h-3 w-3" />
-                          {entry.partnerType}
-                        </span>
-                      </div>
-                      <h3 className="text-sm font-medium">{entry.partnerName}</h3>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {entry.country} &middot; {entry.startDate}
-                        {entry.endDate ? ` to ${entry.endDate}` : " (ongoing)"}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {entry.strategicObjectives}
-                      </p>
-                      {entry.rejectionReason && (
-                        <p className="text-xs text-destructive mt-1 bg-destructive/5 rounded px-2 py-1">
-                          Rejection reason: {entry.rejectionReason}
-                        </p>
-                      )}
-                    </div>
-                    <WorkflowActions entry={entry} user={user} onUpdate={refresh} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      </div>
+    </AuthGuard>
   )
 }
