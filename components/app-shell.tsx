@@ -27,15 +27,17 @@ import {
   ChevronRight,
   Settings,
   LogOut,
+  UserCog
 } from "lucide-react"
 
-// Navigation config
+// Navigation config (Now includes the Admin Panel!)
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Academic Research", href: "/academic-research/submission", icon: BookOpen },
   { name: "Partnerships", href: "/institutional-relations/partnerships", icon: Handshake },
   { name: "Rankings & Accreditations", href: "/accreditations-rankings", icon: Trophy },
   { name: "Review & Publish", href: "/review", icon: ClipboardCheck },
+  { name: "Admin Panel", href: "/admin", icon: UserCog },
 ]
 
 // Helper for badge colors
