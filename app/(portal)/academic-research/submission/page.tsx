@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
 import { academicSchema, type AcademicEntry, type AcademicFormData } from "@/lib/types"
-import { BookOpen, Plus, Loader2, LogOut, UserCircle, ShieldCheck, ChevronRight, LayoutGrid } from "lucide-react"
+import { Plus, Loader2, ChevronRight, LayoutGrid } from "lucide-react"
 import { toast } from "sonner"
 import AuthGuard from "@/components/auth-guard"
 
@@ -30,9 +30,12 @@ export default function AcademicResearchPage() {
     department: "AI & Data Science",
   })
 
+  // Safely fetch user role for the workflow permissions
   const fetchUserPermissions = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError) throw authError
+
       if (user) {
         setUserEmail(user.email || "")
         
@@ -51,6 +54,7 @@ export default function AcademicResearchPage() {
     }
   }, [])
 
+  // Safely fetch all submissions
   const fetchEntries = useCallback(async () => {
     try {
       setIsLoadingData(true)
@@ -93,11 +97,6 @@ export default function AcademicResearchPage() {
     fetchEntries()
   }, [fetchUserPermissions, fetchEntries])
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    window.location.href = "/login"
-  }
-
   function updateField(field: keyof AcademicFormData, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
@@ -137,37 +136,11 @@ export default function AcademicResearchPage() {
 
   return (
     <AuthGuard>
-      <div className="flex flex-col gap-8 p-6 md:p-10 max-w-7xl mx-auto min-h-screen bg-slate-50/50">
+      <div className="flex flex-col gap-6 w-full">
         
-        <nav className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border shadow-sm border-slate-200">
-          <div className="flex items-center gap-4">
-            <div className="bg-primary/10 p-3 rounded-xl">
-              <BookOpen className="h-7 w-7 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Academic Portal</h1>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="flex items-center gap-1.5 text-sm text-slate-500 font-medium">
-                  <UserCircle className="h-4 w-4" /> {userEmail || "Loading..."}
-                </span>
-                <span className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border border-indigo-100">
-                  <ShieldCheck className="h-3 w-3" /> {userRole}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <Button variant="outline" className="flex-1 md:flex-none" onClick={handleLogout}>
-              <LogOut className="h-4 w-4 mr-2" /> Logout
-            </Button>
-            <Button className="flex-1 md:flex-none bg-primary hover:bg-primary/90 shadow-md" onClick={() => setShowForm(!showForm)}>
-              <Plus className="h-4 w-4 mr-1" /> New Submission
-            </Button>
-          </div>
-        </nav>
-
+        {/* Multi-Step Submission Form */}
         {showForm && (
-          <Card className="border-primary/20 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500">
+          <Card className="border-primary/20 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
             <CardHeader className="bg-slate-50/50 border-b">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-xl font-bold">New Research Submission</CardTitle>
@@ -223,6 +196,7 @@ export default function AcademicResearchPage() {
           </Card>
         )}
 
+        {/* Submissions Registry List */}
         <Card className="shadow-sm border-slate-200 overflow-hidden">
           <CardHeader className="bg-white border-b py-5">
             <div className="flex items-center justify-between">
@@ -230,17 +204,25 @@ export default function AcademicResearchPage() {
                 <LayoutGrid className="h-5 w-5 text-slate-400" />
                 <CardTitle className="text-lg font-bold text-slate-800">Research Registry</CardTitle>
               </div>
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{entries.length} Submissions</span>
+              <div className="flex items-center gap-4">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest hidden sm:inline-block">
+                  {entries.length} Submissions
+                </span>
+                {/* The 'New Submission' button is now cleanly placed in the card header */}
+                <Button size="sm" onClick={() => setShowForm(!showForm)}>
+                  <Plus className="h-4 w-4 mr-1" /> New Submission
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             {isLoadingData ? (
               <div className="p-24 flex flex-col items-center justify-center gap-4 text-slate-400">
                 <Loader2 className="h-10 w-10 animate-spin text-primary/40" />
-                <p className="text-sm font-medium animate-pulse">Syncing with school database...</p>
+                <p className="text-sm font-medium animate-pulse">Syncing database...</p>
               </div>
             ) : entries.length === 0 ? (
-              <div className="p-20 text-center text-slate-400 italic bg-slate-50/30">No submissions found in your department.</div>
+              <div className="p-20 text-center text-slate-400 italic bg-slate-50/30">No submissions found.</div>
             ) : (
               <div className="divide-y divide-slate-100 bg-white">
                 {entries.map((entry) => (
@@ -259,6 +241,7 @@ export default function AcademicResearchPage() {
                         <span className="text-primary/70">{entry.department}</span>
                       </div>
                     </div>
+                    {/* Crash-proof passing of user role */}
                     <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
                   </div>
                 ))}

@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -28,9 +29,8 @@ import {
   Settings,
   LogOut,
 } from "lucide-react"
-import { getCurrentUser, setCurrentUser, users } from "@/lib/store"
-import type { UserRole } from "@/lib/types"
 
+// Navigation config
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Academic Research", href: "/academic-research/submission", icon: BookOpen },
@@ -39,28 +39,21 @@ const navigation = [
   { name: "Review & Publish", href: "/review", icon: ClipboardCheck },
 ]
 
-function roleBadgeVariant(role: UserRole) {
+// Helper for badge colors
+function roleBadgeVariant(role: string) {
   switch (role) {
+    case "admin":
     case "academic_director":
       return "default"
+    case "reviewer":
     case "department_head":
       return "secondary"
-    case "professor":
+    default:
       return "outline"
   }
 }
 
-function roleLabel(role: UserRole) {
-  switch (role) {
-    case "academic_director":
-      return "Academic Director"
-    case "department_head":
-      return "Department Head"
-    case "professor":
-      return "Professor"
-  }
-}
-
+// Sidebar Component
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname()
 
@@ -105,12 +98,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       {/* Footer */}
       <div className="border-t border-sidebar-border px-4 py-4">
-        <p className="text-xs text-sidebar-foreground/50">
-          Aivancity Paris-Cachan
-        </p>
-        <p className="text-xs text-sidebar-foreground/40">
-          AI, Business & Ethics
-        </p>
+        <p className="text-xs text-sidebar-foreground/50">Aivancity Paris-Cachan</p>
+        <p className="text-xs text-sidebar-foreground/40">AI, Business & Ethics</p>
       </div>
     </div>
   )
@@ -118,16 +107,44 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [, setTick] = useState(0)
-  const user = getCurrentUser()
+  const [userEmail, setUserEmail] = useState("Loading...")
+  const [userRole, setUserRole] = useState("")
 
-  function switchUser(userId: string) {
-    const u = users.find((x) => x.id === userId)
-    if (u) {
-      setCurrentUser(u)
-      setTick((t) => t + 1)
+  // Fetch real user data from Supabase
+  useEffect(() => {
+    async function fetchRealUser() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setUserEmail(user.email || "")
+        // Safely fetch role
+        const { data } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("email", user.email)
+          .maybeSingle()
+        
+        if (data && data.role) {
+          setUserRole(data.role.trim().toLowerCase())
+        } else {
+          setUserRole("author")
+        }
+      } else {
+        setUserEmail("Guest")
+        setUserRole("author")
+      }
     }
+    fetchRealUser()
+  }, [])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    window.location.href = "/login"
   }
+
+  // Generate initials for the avatar
+  const initials = userEmail !== "Loading..." && userEmail !== "Guest" 
+    ? userEmail.substring(0, 2).toUpperCase() 
+    : "U"
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -161,47 +178,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="hidden lg:block" />
 
           <div className="flex items-center gap-3">
-            <Badge variant={roleBadgeVariant(user.role)} className="hidden sm:inline-flex">
-              {roleLabel(user.role)}
+            <Badge variant={roleBadgeVariant(userRole)} className="hidden sm:inline-flex uppercase">
+              {userRole || "Loading..."}
             </Badge>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2 h-9 px-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium">
-                    {user.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                    {initials}
                   </div>
-                  <span className="text-sm font-medium hidden sm:inline">{user.name}</span>
+                  <span className="text-sm font-medium hidden sm:inline truncate max-w-[150px]">
+                    {userEmail}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel className="font-normal">
-                  <p className="text-sm font-medium">{user.name}</p>
-                  <p className="text-xs text-muted-foreground">{user.email}</p>
+                  <p className="text-sm font-medium truncate">{userEmail}</p>
+                  <p className="text-xs text-muted-foreground uppercase">{userRole}</p>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  Switch User (Demo)
-                </DropdownMenuLabel>
-                {users.map((u) => (
-                  <DropdownMenuItem
-                    key={u.id}
-                    onClick={() => switchUser(u.id)}
-                    className={cn(u.id === user.id && "bg-accent")}
-                  >
-                    <User className="mr-2 h-3 w-3" />
-                    <div className="flex flex-col">
-                      <span className="text-sm">{u.name}</span>
-                      <span className="text-xs text-muted-foreground">{roleLabel(u.role)}</span>
-                    </div>
-                  </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <Settings className="mr-2 h-3 w-3" />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <LogOut className="mr-2 h-3 w-3" />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer">
+                  <LogOut className="mr-2 h-4 w-4" />
                   Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
