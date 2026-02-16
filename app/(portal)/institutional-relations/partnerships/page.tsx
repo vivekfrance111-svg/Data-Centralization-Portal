@@ -6,10 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge" // Added missing import
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
-import { Trophy, Plus, Loader2, Award, TrendingUp, LayoutGrid } from "lucide-react"
+import { Trophy, Plus, Loader2, TrendingUp, Database, LayoutGrid } from "lucide-react"
 import { toast } from "sonner"
 import AuthGuard from "@/components/auth-guard"
 
@@ -28,10 +29,9 @@ export default function RankingsPage() {
     year: "2026",
     rank: "",
     category: "",
-    accreditationType: "",
   })
 
-  // Auth & Permissions
+  // Fetch real user permissions
   const fetchUserPermissions = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -50,7 +50,7 @@ export default function RankingsPage() {
     }
   }, [])
 
-  // Database Fetching for REAL Rankings
+  // Fetch REAL entries from portal_data filtered by 'ranking'
   const fetchEntries = useCallback(async () => {
     try {
       setIsLoadingData(true)
@@ -63,7 +63,7 @@ export default function RankingsPage() {
       if (error) throw error
       setEntries(data || [])
     } catch (err) {
-      toast.error("Failed to load real ranking data.")
+      toast.error("Database sync failed.")
     } finally {
       setIsLoadingData(false)
     }
@@ -95,12 +95,12 @@ export default function RankingsPage() {
       }])
 
       if (error) throw error
-      toast.success("Ranking successfully added to registry!")
+      toast.success("Saved to live registry!")
       setShowForm(false)
-      setFormData({ rankingBody: "", programName: "", year: "2026", rank: "", category: "", accreditationType: "" })
+      setFormData({ rankingBody: "", programName: "", year: "2026", rank: "", category: "" })
       fetchEntries()
     } catch (err) {
-      toast.error("Database save failed.")
+      toast.error("Failed to save to database.")
     } finally {
       setIsSubmitting(false)
     }
@@ -113,105 +113,109 @@ export default function RankingsPage() {
         {/* Module Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="bg-amber-100 p-3 rounded-xl">
+            <div className="bg-amber-100 p-3 rounded-xl border border-amber-200 shadow-sm">
               <Trophy className="h-7 w-7 text-amber-600" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Rankings & Accreditations</h1>
-              <p className="text-slate-500 text-sm mt-1">Institutional visas, labels, and global accreditation data.</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900">Rankings & Accreditations</h1>
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1 px-2">
+                  <Database className="h-3 w-3" /> Live Connection
+                </Badge>
+              </div>
+              <p className="text-slate-500 text-sm mt-1 font-medium">Verified institutional performance and global standing.</p>
             </div>
           </div>
-          <Button onClick={() => setShowForm(!showForm)} className="bg-slate-900 hover:bg-slate-800">
+          <Button onClick={() => setShowForm(!showForm)} className="bg-slate-900 hover:bg-slate-800 shadow-lg">
             <Plus className="h-4 w-4 mr-1" /> New Entry
           </Button>
         </div>
 
         {/* Entry Form */}
         {showForm && (
-          <Card className="border-amber-200 shadow-lg animate-in fade-in slide-in-from-top-2">
-            <CardHeader className="bg-amber-50/50 border-b">
-              <CardTitle className="text-lg">Add New Performance Data</CardTitle>
-              <CardDescription>Enter details exactly as they appear in the official publication.</CardDescription>
+          <Card className="border-amber-200 shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
+            <CardHeader className="bg-amber-50/30 border-b py-4">
+              <CardTitle className="text-lg font-bold text-amber-900">New Performance Record</CardTitle>
             </CardHeader>
-            <CardContent className="pt-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <CardContent className="pt-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div className="md:col-span-2 space-y-2">
-                  <Label className="text-xs font-bold uppercase text-slate-500">Ranking Body / Accreditation *</Label>
-                  <Input placeholder="e.g., Financial Times, QS World Rankings, EQUIS" value={formData.rankingBody} onChange={(e) => setFormData({...formData, rankingBody: e.target.value})} />
+                  <Label className="text-sm font-bold text-slate-700">Ranking Body / Accreditation *</Label>
+                  <Input className="h-12 border-slate-200" placeholder="e.g., Financial Times, QS World Rankings" value={formData.rankingBody} onChange={(e) => setFormData({...formData, rankingBody: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase text-slate-500">Year *</Label>
-                  <Input type="number" value={formData.year} onChange={(e) => setFormData({...formData, year: e.target.value})} />
+                  <Label className="text-sm font-bold text-slate-700">Year *</Label>
+                  <Input className="h-12 border-slate-200" type="number" value={formData.year} onChange={(e) => setFormData({...formData, year: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase text-slate-500">Program / Category</Label>
-                  <Input placeholder="e.g., MSc Artificial Intelligence" value={formData.programName} onChange={(e) => setFormData({...formData, programName: e.target.value})} />
+                  <Label className="text-sm font-bold text-slate-700">Program / Category</Label>
+                  <Input className="h-12 border-slate-200" placeholder="e.g., MSc Data Science" value={formData.programName} onChange={(e) => setFormData({...formData, programName: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase text-slate-500">Rank / Score *</Label>
-                  <Input placeholder="e.g., #3, 5 Stars, or Accredited" value={formData.rank} onChange={(e) => setFormData({...formData, rank: e.target.value})} />
+                  <Label className="text-sm font-bold text-slate-700">Rank / Score *</Label>
+                  <Input className="h-12 font-bold text-emerald-600 border-slate-200" placeholder="e.g., #3 or 5-Star" value={formData.rank} onChange={(e) => setFormData({...formData, rank: e.target.value})} />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase text-slate-500">Category</Label>
-                  <Input placeholder="e.g., Masters in Management" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} />
+                  <Label className="text-sm font-bold text-slate-700">Global Category</Label>
+                  <Input className="h-12 border-slate-200" placeholder="e.g., Global MBA" value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} />
                 </div>
               </div>
-              <div className="flex justify-end gap-3 mt-8 pt-4 border-t">
+              <div className="flex justify-end gap-3 mt-10 pt-6 border-t">
                 <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
-                <Button onClick={handleSaveRanking} disabled={isSubmitting}>
+                <Button className="px-8 shadow-md" onClick={handleSaveRanking} disabled={isSubmitting}>
                   {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Save Entry
+                  Save to Registry
                 </Button>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Data Table */}
-        <Card className="shadow-sm border-slate-200">
-          <CardHeader className="border-b py-4">
+        {/* Database Registry Table */}
+        <Card className="shadow-sm border-slate-200 overflow-hidden">
+          <CardHeader className="bg-white border-b py-5 px-6">
             <div className="flex items-center justify-between">
-               <div className="flex items-center gap-2">
-                <LayoutGrid className="h-4 w-4 text-slate-400" />
-                <CardTitle className="text-base font-bold text-slate-800">Rankings Registry</CardTitle>
+              <div className="flex items-center gap-2">
+                <LayoutGrid className="h-5 w-5 text-slate-400" />
+                <CardTitle className="text-lg font-bold text-slate-800">Rankings Registry</CardTitle>
               </div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{entries.length} Live Records</span>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             {isLoadingData ? (
-              <div className="p-20 flex flex-col items-center justify-center gap-3">
-                <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
-                <p className="text-sm text-slate-500">Connecting to school database...</p>
+              <div className="p-24 flex flex-col items-center justify-center gap-4 text-slate-400">
+                <Loader2 className="h-10 w-10 animate-spin text-amber-500/50" />
+                <p className="text-sm font-medium animate-pulse">Syncing with database...</p>
               </div>
             ) : entries.length === 0 ? (
-              <div className="p-20 text-center text-slate-400 italic">No rankings have been verified in the system yet.</div>
+              <div className="p-20 text-center text-slate-400 italic bg-slate-50/30">No real ranking data found in database.</div>
             ) : (
               <Table>
                 <TableHeader className="bg-slate-50/80">
                   <TableRow>
-                    <TableHead className="w-[100px]">Status</TableHead>
+                    <TableHead className="w-[120px] px-6">Status</TableHead>
                     <TableHead>Ranking Body</TableHead>
                     <TableHead>Program</TableHead>
                     <TableHead>Year</TableHead>
                     <TableHead>Result</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right px-6">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {entries.map((entry) => (
-                    <TableRow key={entry.id} className="hover:bg-slate-50/50">
-                      <TableCell><StatusBadge status={entry.status} /></TableCell>
-                      <TableCell className="font-bold text-slate-900">{entry.ranking_body || entry.title}</TableCell>
-                      <TableCell className="text-slate-600">{entry.program_name || "Institutional"}</TableCell>
-                      <TableCell className="text-slate-500 font-medium">{entry.publication_year || entry.year}</TableCell>
+                    <TableRow key={entry.id} className="hover:bg-slate-50/50 transition-colors">
+                      <TableCell className="px-6"><StatusBadge status={entry.status} /></TableCell>
+                      <TableCell className="font-extrabold text-slate-900">{entry.ranking_body || entry.title}</TableCell>
+                      <TableCell className="text-slate-600 font-medium">{entry.program_name || "Institutional"}</TableCell>
+                      <TableCell className="text-slate-500">{entry.publication_year || entry.year}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                          <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+                        <div className="flex items-center gap-1.5 font-extrabold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-lg w-fit border border-emerald-100">
+                          <TrendingUp className="h-4 w-4" />
                           {entry.rank_score || entry.rank}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right px-6">
                         <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
                       </TableCell>
                     </TableRow>
