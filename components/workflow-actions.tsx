@@ -3,82 +3,70 @@
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
-import { Check, Send, X } from "lucide-react"
+import { Check, Send, X, ArrowUpCircle } from "lucide-react"
 
-// We expect the entry, the current user, and the refresh function from page.tsx
-export function WorkflowActions({ entry, user, onUpdate }: any) {
+interface WorkflowProps {
+  entry: any
+  user: { role: string }
+  onUpdate: () => void
+}
+
+export function WorkflowActions({ entry, user, onUpdate }: WorkflowProps) {
   
-  // 1. The Supabase Update Function
+  // The function that actually changes the status in Supabase
   async function updateStatus(newStatus: string) {
     try {
       const { error } = await supabase
         .from("portal_data")
         .update({ status: newStatus })
-        .eq("id", entry.id) // Find the exact row by its ID
+        .eq("id", entry.id)
 
       if (error) throw error
 
-      toast.success(`Status updated to ${newStatus.replace('_', ' ')}`)
-      onUpdate() // This triggers fetchEntries() on your main page to refresh the UI
+      toast.success(`Entry marked as ${newStatus.replace('_', ' ')}`)
+      onUpdate() // This tells the main page to refresh the list instantly
     } catch (err: any) {
-      console.error("Error updating status:", err)
+      console.error("Workflow Error:", err)
       toast.error("Failed to update status.")
     }
   }
 
-  // 2. Role-Based Logic (Who can see what buttons?)
-  // For now, we assume user.role exists. If not, you can hardcode this to test.
-  const isAuthor = user?.role === "author" || user?.role === "admin"
-  const isReviewer = user?.role === "reviewer" || user?.role === "admin"
+  const isAdmin = user?.role === "admin"
+  const isReviewer = user?.role === "reviewer" || isAdmin
+  const isAuthor = user?.role === "author" || isAdmin
 
   return (
     <div className="flex items-center gap-2">
       
-      {/* If it's a DRAFT, the Author can submit it for review */}
+      {/* AUTHORS: Can submit their drafts for review */}
       {entry.status === "draft" && isAuthor && (
-        <Button 
-          size="sm" 
-          onClick={() => updateStatus("pending_review")}
-        >
-          <Send className="w-4 h-4 mr-1" />
-          Submit for Review
+        <Button size="sm" variant="outline" onClick={() => updateStatus("pending_review")}>
+          <Send className="w-4 h-4 mr-1 text-blue-500" />
+          Submit
         </Button>
       )}
 
-      {/* If it's PENDING, the Reviewer can Approve or Reject it */}
+      {/* ADMINS/REVIEWERS: Can Approve or Reject */}
       {entry.status === "pending_review" && isReviewer && (
         <>
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="text-destructive hover:text-destructive"
-            onClick={() => updateStatus("rejected")}
-          >
-            <X className="w-4 h-4 mr-1" />
+          <Button size="sm" variant="outline" className="hover:bg-red-50" onClick={() => updateStatus("draft")}>
+            <X className="w-4 h-4 mr-1 text-red-500" />
             Reject
           </Button>
-          <Button 
-            size="sm" 
-            className="bg-green-600 hover:bg-green-700 text-white"
-            onClick={() => updateStatus("published")}
-          >
+          <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => updateStatus("published")}>
             <Check className="w-4 h-4 mr-1" />
             Publish
           </Button>
         </>
       )}
 
-      {/* If it's PUBLISHED, maybe an Admin can revert it to a draft */}
-      {entry.status === "published" && user?.role === "admin" && (
-        <Button 
-          size="sm" 
-          variant="outline"
-          onClick={() => updateStatus("draft")}
-        >
+      {/* ADMINS ONLY: Can take a published item down */}
+      {entry.status === "published" && isAdmin && (
+        <Button size="sm" variant="ghost" onClick={() => updateStatus("draft")}>
+          <ArrowUpCircle className="w-4 h-4 mr-1 text-muted-foreground" />
           Revert to Draft
         </Button>
       )}
-      
     </div>
   )
 }
