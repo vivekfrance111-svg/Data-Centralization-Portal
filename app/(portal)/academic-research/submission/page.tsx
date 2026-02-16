@@ -1,5 +1,5 @@
 "use client"
-
+import { supabase } from "@/lib/supabase"
 import { useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -67,7 +67,7 @@ export default function AcademicResearchPage() {
     return Object.keys(relevantErrors).length === 0
   }
 
-  function handleSaveDraft() {
+  async function handleSaveDraft() {
     const result = academicSchema.safeParse(formData)
     if (!result.success) {
       const fieldErrors: Record<string, string> = {}
@@ -89,8 +89,33 @@ export default function AcademicResearchPage() {
       ...result.data,
     }
 
+    // --- NEW: Send to Supabase Database ---
+    const { error } = await supabase
+      .from('portal_data')
+      .insert([
+        {
+          title: result.data.title,
+          authors: result.data.authors,
+          publication_type: result.data.publicationType,
+          journal: result.data.journal || "",
+          publication_year: result.data.year,
+          doi: result.data.doi || "",
+          department: result.data.department,
+          abstract: result.data.abstract,
+          keywords: result.data.keywords,
+          status: "draft"
+        }
+      ])
+
+    if (error) {
+      console.error("Supabase Database Error:", error)
+      toast.error("Failed to save to database. Check console.")
+      return
+    }
+    // --------------------------------------
+
     addEntry(entry)
-    toast.success("Entry saved as draft successfully.")
+    toast.success("Entry saved to database successfully!")
     setShowForm(false)
     setStep(1)
     setFormData({
