@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge" // Added the missing import
+import { Badge } from "@/components/ui/badge" 
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
 import { Handshake, Plus, Loader2, ChevronRight, LayoutGrid, Globe, Building2 } from "lucide-react"
@@ -53,19 +53,20 @@ export default function PartnershipsPage() {
     }
   }, [])
 
-  // Database Fetching
+  // Database Fetching - REAL DATA QUERY
   const fetchEntries = useCallback(async () => {
     try {
       setIsLoadingData(true)
       const { data, error } = await supabase
         .from("portal_data")
         .select("*")
-        .eq("type", "partnership")
+        .eq("type", "partnership") // Ensure this matches your DB column exactly
         .order("created_at", { ascending: false })
 
       if (error) throw error
       setEntries(data || [])
     } catch (err) {
+      console.error("Fetch error:", err)
       toast.error("Failed to load partnerships.")
     } finally {
       setIsLoadingData(false)
@@ -90,9 +91,10 @@ export default function PartnershipsPage() {
     }
 
     try {
+      // Inserting into portal_data with explicit type mapping
       const { error } = await supabase.from("portal_data").insert([{
         type: "partnership",
-        title: formData.partnerName, 
+        title: formData.partnerName, // title is used for the main display
         partner_name: formData.partnerName,
         partner_type: formData.partnerType,
         country: formData.country,
@@ -115,6 +117,7 @@ export default function PartnershipsPage() {
       })
       fetchEntries()
     } catch (err) {
+      console.error("Insert error:", err)
       toast.error("Failed to save.")
     } finally {
       setIsSubmitting(false)
@@ -125,26 +128,24 @@ export default function PartnershipsPage() {
     <AuthGuard>
       <div className="flex flex-col gap-8 w-full">
         
-        {/* Module Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
               <Handshake className="h-6 w-6 text-primary" />
               Institutional Partnerships
             </h1>
-            <p className="text-slate-500 mt-1">Manage global corporate and academic alliances.</p>
+            <p className="text-slate-500 mt-1 text-sm">Centralized registry for global alliances.</p>
           </div>
           <Button onClick={() => setShowForm(!showForm)} className="shadow-md">
             <Plus className="h-4 w-4 mr-1" /> New Partnership
           </Button>
         </div>
 
-        {/* Multi-Step Form */}
         {showForm && (
           <Card className="border-primary/20 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500">
             <CardHeader className="bg-slate-50/50 border-b">
               <div className="flex justify-between items-center">
-                <CardTitle className="text-xl font-bold">Register New Alliance</CardTitle>
+                <CardTitle className="text-xl font-bold">Alliance Registration</CardTitle>
                 <div className="flex gap-2">
                   <div className={`h-2 w-12 rounded-full ${step === 1 ? 'bg-primary' : 'bg-slate-200'}`} />
                   <div className={`h-2 w-12 rounded-full ${step === 2 ? 'bg-primary' : 'bg-slate-200'}`} />
@@ -156,11 +157,11 @@ export default function PartnershipsPage() {
               {step === 1 ? (
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="md:col-span-2 space-y-2">
-                        <Label className="text-sm font-semibold">Partner Organization Name *</Label>
-                        <Input className="h-12" placeholder="e.g., Microsoft France, MIT, etc." value={formData.partnerName} onChange={(e) => updateField("partnerName", e.target.value)} />
+                        <Label className="text-sm font-semibold text-slate-700">Partner Organization Name *</Label>
+                        <Input className="h-12 border-slate-200" placeholder="e.g., Microsoft France, MIT" value={formData.partnerName} onChange={(e) => updateField("partnerName", e.target.value)} />
                     </div>
                     <div className="space-y-2">
-                        <Label className="text-sm font-semibold">Partner Type</Label>
+                        <Label className="text-sm font-semibold text-slate-700">Partner Type</Label>
                         <Select value={formData.partnerType} onValueChange={(val) => updateField("partnerType", val)}>
                           <SelectTrigger className="h-12">
                             <SelectValue />
@@ -173,19 +174,19 @@ export default function PartnershipsPage() {
                         </Select>
                     </div>
                     <div className="space-y-2">
-                        <Label className="text-sm font-semibold">Country / Region *</Label>
-                        <Input className="h-12" placeholder="France, Global, etc." value={formData.country} onChange={(e) => updateField("country", e.target.value)} />
+                        <Label className="text-sm font-semibold text-slate-700">Country / Region *</Label>
+                        <Input className="h-12 border-slate-200" placeholder="e.g., France, USA" value={formData.country} onChange={(e) => updateField("country", e.target.value)} />
                     </div>
                  </div>
               ) : (
                 <div className="space-y-6">
                     <div className="space-y-2">
-                      <Label className="text-sm font-semibold">Strategic Description *</Label>
-                      <Textarea className="min-h-[180px]" placeholder="Outline the main goals of this partnership..." value={formData.description} onChange={(e) => updateField("description", e.target.value)} />
+                      <Label className="text-sm font-semibold text-slate-700">Strategic Description *</Label>
+                      <Textarea className="min-h-[180px] border-slate-200" placeholder="Outline the main goals of this partnership..." value={formData.description} onChange={(e) => updateField("description", e.target.value)} />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-semibold">Main Contact Person</Label>
-                      <Input className="h-12" placeholder="Name of primary stakeholder" value={formData.contactPerson} onChange={(e) => updateField("contactPerson", e.target.value)} />
+                      <Label className="text-sm font-semibold text-slate-700">Main Contact Person</Label>
+                      <Input className="h-12 border-slate-200" placeholder="Name of primary stakeholder" value={formData.contactPerson} onChange={(e) => updateField("contactPerson", e.target.value)} />
                     </div>
                 </div>
               )}
@@ -206,25 +207,24 @@ export default function PartnershipsPage() {
           </Card>
         )}
 
-        {/* Registry List */}
         <Card className="shadow-sm border-slate-200 overflow-hidden">
           <CardHeader className="bg-white border-b py-5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-slate-800">
                 <LayoutGrid className="h-5 w-5 text-slate-400" />
-                <CardTitle className="text-lg font-bold text-slate-800">Partnership Registry</CardTitle>
+                <CardTitle className="text-lg font-bold">Partnership Registry</CardTitle>
               </div>
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{entries.length} Alliances</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{entries.length} Records</span>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             {isLoadingData ? (
               <div className="p-24 flex flex-col items-center justify-center gap-4 text-slate-400">
                 <Loader2 className="h-10 w-10 animate-spin text-primary/40" />
-                <p className="text-sm font-medium">Loading alliance data...</p>
+                <p className="text-sm font-medium animate-pulse">Syncing with database...</p>
               </div>
             ) : entries.length === 0 ? (
-              <div className="p-20 text-center text-slate-400 italic bg-slate-50/30">No partnerships registered yet.</div>
+              <div className="p-20 text-center text-slate-400 italic bg-slate-50/30">No partnerships registered.</div>
             ) : (
               <div className="divide-y divide-slate-100 bg-white">
                 {entries.map((entry) => (
@@ -237,15 +237,14 @@ export default function PartnershipsPage() {
                         </Badge>
                       </div>
                       <h3 className="text-lg font-bold text-slate-900 leading-tight group-hover:text-primary transition-colors">
-                        {entry.partner_name || entry.title}
+                        {entry.partner_name || entry.title || "Unnamed Alliance"}
                       </h3>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 font-medium">
-                        <span className="flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" /> {entry.country}</span>
+                        <span className="flex items-center gap-1.5 text-slate-600"><Globe className="h-3.5 w-3.5" /> {entry.country}</span>
                         <span className="h-1 w-1 rounded-full bg-slate-300" />
-                        <span className="flex items-center gap-1.5 capitalize"><Building2 className="h-3.5 w-3.5" /> {entry.partner_type} Alliance</span>
+                        <span className="flex items-center gap-1.5 capitalize text-slate-600 font-semibold"><Building2 className="h-3.5 w-3.5" /> {entry.partner_type}</span>
                       </div>
                     </div>
-                    {/* Role-Based Workflow Actions */}
                     <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
                   </div>
                 ))}
