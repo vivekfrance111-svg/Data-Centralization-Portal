@@ -2,7 +2,7 @@
 
 import { supabase } from "@/lib/supabase"
 import { useState, useCallback, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,7 +21,8 @@ export default function AcademicResearchPage() {
   const [entries, setEntries] = useState<AcademicEntry[]>([])
   const [isLoadingData, setIsLoadingData] = useState(true)
   
-  // SECURE AUTH STATE
+  // NEW: Added isReady to prevent "Client-side exception"
+  const [isReady, setIsReady] = useState(false)
   const [userRole, setUserRole] = useState<string>("author")
   const [userEmail, setUserEmail] = useState<string>("")
 
@@ -42,13 +43,13 @@ export default function AcademicResearchPage() {
           .eq("email", user.email)
           .maybeSingle()
         
-        if (error) throw error
-        // Clean and fallback
+        if (error) console.error("Permission Error:", error)
         setUserRole(data?.role?.trim().toLowerCase() || "author")
       }
     } catch (err) {
-      console.error("Permission fetch error:", err)
       setUserRole("author")
+    } finally {
+      setIsReady(true) // Now the UI is safe to show
     }
   }, [])
 
@@ -62,27 +63,25 @@ export default function AcademicResearchPage() {
 
       if (error) throw error
       
-      // EXTREME SAFETY MAPPING: Prevents crashes if any field is NULL
       const formatted: AcademicEntry[] = (data || []).map((item) => ({
         id: item?.id?.toString() || Math.random().toString(),
         type: "academic",
         status: item?.status || "draft",
         title: item?.title || "Untitled",
-        authors: item?.authors || "No Authors Listed",
+        authors: item?.authors || "Unknown",
         publicationType: item?.publication_type || "journal_article",
-        year: item?.publication_year || "N/A",
+        year: item?.publication_year || "2026",
         department: item?.department || "Unassigned",
         journal: item?.journal || "",
         abstract: item?.abstract || "",
         keywords: item?.keywords || "",
         createdBy: item?.created_by || "system",
-        createdAt: item?.created_at ? item.created_at.split("T")[0] : "Recent",
-        updatedAt: item?.created_at ? item.created_at.split("T")[0] : "Recent",
+        createdAt: item?.created_at || new Date().toISOString(),
+        updatedAt: item?.created_at || new Date().toISOString(),
       }))
       setEntries(formatted)
     } catch (err) {
-      console.error("Data fetch error:", err)
-      toast.error("Database sync error.")
+      toast.error("Data fetch failed.")
     } finally {
       setIsLoadingData(false)
     }
@@ -92,6 +91,16 @@ export default function AcademicResearchPage() {
     fetchUserPermissions()
     fetchEntries()
   }, [fetchUserPermissions, fetchEntries])
+
+  // SAFETY: If auth isn't ready, don't even try to render the page
+  if (!isReady) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+        <Loader2 className="h-10 w-10 animate-spin text-primary/40" />
+        <p className="mt-4 text-sm text-slate-400 font-medium">Authorizing access...</p>
+      </div>
+    )
+  }
 
   return (
     <AuthGuard>
@@ -112,7 +121,6 @@ export default function AcademicResearchPage() {
           </Button>
         </header>
 
-        {/* Form and List code stays mostly the same but uses safety checks */}
         <Card className="shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between border-b">
             <CardTitle className="text-lg">Submissions</CardTitle>
@@ -132,7 +140,7 @@ export default function AcademicResearchPage() {
                       <h3 className="font-bold">{entry.title}</h3>
                       <p className="text-xs text-muted-foreground">{entry.authors} • {entry.year}</p>
                     </div>
-                    {/* Passing User Role to Actions */}
+                    {/* Safety-wrapped user object */}
                     <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
                   </div>
                 ))}

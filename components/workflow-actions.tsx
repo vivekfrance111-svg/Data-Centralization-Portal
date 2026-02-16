@@ -5,14 +5,11 @@ import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Check, Send, X, ArrowUpCircle } from "lucide-react"
 
-export function WorkflowActions({ entry, user, onUpdate }: any) {
+// Defaulting user to a guest/author role to prevent crashes
+export function WorkflowActions({ entry, user = { role: "author" }, onUpdate }: any) {
   
-  // 1. Safety check for the status
   const status = entry?.status || "draft"
-  
-  // 2. Safety check for the role
-  const rawRole = typeof user?.role === 'string' ? user.role : "author"
-  const currentRole = rawRole.trim().toLowerCase()
+  const currentRole = user?.role?.toLowerCase() || "author"
 
   async function updateStatus(newStatus: string) {
     try {
@@ -22,19 +19,16 @@ export function WorkflowActions({ entry, user, onUpdate }: any) {
         .eq("id", entry.id)
 
       if (error) throw error
-      toast.success("Updated!")
+      toast.success("Status Updated")
       onUpdate()
     } catch (err) {
-      toast.error("Update failed.")
+      toast.error("Update failed")
     }
   }
 
   const isAdmin = currentRole === "admin"
   const isReviewer = currentRole === "reviewer" || isAdmin
   const isAuthor = currentRole === "author" || isAdmin
-
-  // If role isn't loaded yet, show nothing to prevent crashes
-  if (!currentRole) return null
 
   return (
     <div className="flex items-center gap-2">
@@ -49,7 +43,7 @@ export function WorkflowActions({ entry, user, onUpdate }: any) {
           <Button size="sm" variant="outline" onClick={() => updateStatus("draft")}>
             <X className="w-4 h-4 mr-1 text-red-500" /> Reject
           </Button>
-          <Button size="sm" className="bg-green-600 text-white" onClick={() => updateStatus("published")}>
+          <Button size="sm" className="bg-green-600 text-white hover:bg-green-700" onClick={() => updateStatus("published")}>
             <Check className="w-4 h-4 mr-1" /> Publish
           </Button>
         </>
@@ -57,7 +51,7 @@ export function WorkflowActions({ entry, user, onUpdate }: any) {
 
       {status === "published" && isAdmin && (
         <Button size="sm" variant="ghost" onClick={() => updateStatus("draft")}>
-          <ArrowUpCircle className="w-4 h-4 mr-1" /> Revert
+          <ArrowUpCircle className="w-4 h-4 mr-1 text-muted-foreground" /> Revert
         </Button>
       )}
     </div>
