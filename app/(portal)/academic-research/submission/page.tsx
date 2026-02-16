@@ -1,17 +1,16 @@
 "use client"
 import { supabase } from "@/lib/supabase"
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
 import { academicSchema, type AcademicEntry, type AcademicFormData } from "@/lib/types"
-import { addEntry, getEntriesByType, getCurrentUser, users } from "@/lib/store"
+import { addEntry, getEntriesByType, getCurrentUser } from "@/lib/store"
 import { BookOpen, Plus, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 
@@ -20,6 +19,7 @@ export default function AcademicResearchPage() {
   const [showForm, setShowForm] = useState(false)
   const [step, setStep] = useState(1)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [isSubmitting, setIsSubmitting] = useState(false) // Track loading state
   const [formData, setFormData] = useState<Partial<AcademicFormData>>({
     publicationType: "journal_article",
     year: "2026",
@@ -28,8 +28,14 @@ export default function AcademicResearchPage() {
 
   const entries = getEntriesByType("academic") as AcademicEntry[]
   const user = getCurrentUser()
-
   const refresh = useCallback(() => setTick((t) => t + 1), [])
+
+  // DEBUG: Monitor validation errors in real-time
+  useEffect(() => {
+    if (Object.keys(errors).length > 0) {
+      console.log("Current Validation Errors:", errors);
+    }
+  }, [errors]);
 
   function updateField(field: string, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -53,12 +59,11 @@ export default function AcademicResearchPage() {
       fieldErrors[path] = e.message
     })
 
-    // Only check fields for the current step
     const step1Fields = ["title", "authors", "publicationType", "year", "department"]
     const step2Fields = ["abstract", "keywords"]
-
     const relevantFields = s === 1 ? step1Fields : step2Fields
     const relevantErrors: Record<string, string> = {}
+    
     relevantFields.forEach((f) => {
       if (fieldErrors[f]) relevantErrors[f] = fieldErrors[f]
     })
@@ -68,63 +73,87 @@ export default function AcademicResearchPage() {
   }
 
   async function handleSaveDraft() {
+    console.log("🚀 handleSaveDraft triggered");
+    setIsSubmitting(true);
+
+    // 1. Validate the data against your schema
     const result = academicSchema.safeParse(formData)
+    
     if (!result.success) {
       const fieldErrors: Record<string, string> = {}
       result.error.errors.forEach((e) => {
         fieldErrors[e.path[0] as string] = e.message
       })
+      console.error("❌ Validation Failed:", fieldErrors); // Tells you exactly what's wrong
       setErrors(fieldErrors)
       toast.error("Please fix the validation errors before saving.")
+      setIsSubmitting(false);
       return
     }
 
-    const entry: AcademicEntry = {
-      id: `a${Date.now()}`,
-      type: "academic",
-      status: "draft",
-      createdBy: user.id,
-      createdAt: new Date().toISOString().split("T")[0],
-      updatedAt: new Date().toISOString().split("T")[0],
-      ...result.data,
+    console.log("✅ Validation Passed. Sending to Supabase...");
+
+    try {
+      // 2. Insert into Supabase
+      const { data, error } = await supabase
+        .from('portal_data')
+        .insert([
+          {
+            title: result.data.title,
+            authors: result.data.authors,
+            publication_type: result.data.publicationType,
+            journal: result.data.journal || "",
+            publication_year: result.data.year,
+            doi: result.data.doi || "",
+            department: result.data.department,
+            abstract: result.data.abstract,
+            keywords: result.data.keywords,
+            status: "draft",
+            created_by: user.id // Ensure your table has a created_by column
+          }
+        ])
+        .select()
+
+      if (error) {
+        console.error("❌ Supabase Insert Error:", error.message, error.details);
+        toast.error(`Database Error: ${error.message}`);
+        setIsSubmitting(false);
+        return
+      }
+
+      console.log("🎉 Successfully saved to Supabase:", data);
+
+      // 3. Update local UI store
+      const entry: AcademicEntry = {
+        id: data[0].id.toString(), // Use the ID returned from Supabase
+        type: "academic",
+        status: "draft",
+        createdBy: user.id,
+        createdAt: new Date().toISOString().split("T")[0],
+        updatedAt: new Date().toISOString().split("T")[0],
+        ...result.data,
+      }
+
+      addEntry(entry)
+      toast.success("Entry saved to database successfully!")
+      
+      // 4. Reset Form
+      setShowForm(false)
+      setStep(1)
+      setFormData({
+        publicationType: "journal_article",
+        year: "2026",
+        department: "AI & Data Science",
+      })
+      setErrors({})
+      refresh()
+
+    } catch (err) {
+      console.error("💥 Unexpected Runtime Error:", err);
+      toast.error("An unexpected error occurred.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // --- NEW: Send to Supabase Database ---
-    const { error } = await supabase
-      .from('portal_data')
-      .insert([
-        {
-          title: result.data.title,
-          authors: result.data.authors,
-          publication_type: result.data.publicationType,
-          journal: result.data.journal || "",
-          publication_year: result.data.year,
-          doi: result.data.doi || "",
-          department: result.data.department,
-          abstract: result.data.abstract,
-          keywords: result.data.keywords,
-          status: "draft"
-        }
-      ])
-
-    if (error) {
-      console.error("Supabase Database Error:", error)
-      toast.error("Failed to save to database. Check console.")
-      return
-    }
-    // --------------------------------------
-
-    addEntry(entry)
-    toast.success("Entry saved to database successfully!")
-    setShowForm(false)
-    setStep(1)
-    setFormData({
-      publicationType: "journal_article",
-      year: "2026",
-      department: "AI & Data Science",
-    })
-    setErrors({})
-    refresh()
   }
 
   function FieldError({ field }: { field: string }) {
@@ -155,7 +184,6 @@ export default function AcademicResearchPage() {
         </Button>
       </div>
 
-      {/* Submission Form */}
       {showForm && (
         <Card>
           <CardHeader>
@@ -297,8 +325,8 @@ export default function AcademicResearchPage() {
                     Next Step
                   </Button>
                 ) : (
-                  <Button onClick={handleSaveDraft}>
-                    Save as Draft
+                  <Button onClick={handleSaveDraft} disabled={isSubmitting}>
+                    {isSubmitting ? "Saving..." : "Save as Draft"}
                   </Button>
                 )}
               </div>
@@ -307,7 +335,7 @@ export default function AcademicResearchPage() {
         </Card>
       )}
 
-      {/* Existing Entries */}
+      {/* Existing Entries List */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Submissions</CardTitle>
@@ -316,10 +344,7 @@ export default function AcademicResearchPage() {
         <CardContent>
           <div className="flex flex-col gap-3">
             {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="rounded-lg border p-4 hover:bg-muted/30 transition-colors"
-              >
+              <div key={entry.id} className="rounded-lg border p-4 hover:bg-muted/30 transition-colors">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -332,14 +357,6 @@ export default function AcademicResearchPage() {
                     <p className="text-xs text-muted-foreground mt-1">
                       {entry.authors} &middot; {entry.year} &middot; {entry.department}
                     </p>
-                    {entry.journal && (
-                      <p className="text-xs text-muted-foreground italic mt-0.5">{entry.journal}</p>
-                    )}
-                    {entry.rejectionReason && (
-                      <p className="text-xs text-destructive mt-1 bg-destructive/5 rounded px-2 py-1">
-                        Rejection reason: {entry.rejectionReason}
-                      </p>
-                    )}
                   </div>
                   <WorkflowActions entry={entry} user={user} onUpdate={refresh} />
                 </div>
