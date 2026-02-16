@@ -25,7 +25,6 @@ import {
   ClipboardCheck,
   Menu,
   ChevronRight,
-  User,
   Settings,
   LogOut,
 } from "lucide-react"
@@ -116,7 +115,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setUserEmail(user.email || "")
-        // Safely fetch role
         const { data } = await supabase
           .from("user_roles")
           .select("role")
@@ -178,7 +176,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="hidden lg:block" />
 
           <div className="flex items-center gap-3">
-            <Badge variant={roleBadgeVariant(userRole)} className="hidden sm:inline-flex uppercase">
+            <Badge variant={roleBadgeVariant(userRole)} className="hidden sm:inline-flex uppercase tracking-wider">
               {userRole || "Loading..."}
             </Badge>
             <DropdownMenu>
@@ -197,7 +195,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <p className="text-sm font-medium truncate">{userEmail}</p>
                   <p className="text-xs text-muted-foreground uppercase">{userRole}</p>
                 </DropdownMenuLabel>
+                
                 <DropdownMenuSeparator />
+                
+                {/* THE NEW SETTINGS BUTTON */}
+                <Link href="/settings">
+                  <DropdownMenuItem className="cursor-pointer">
+                    <Settings className="mr-2 h-4 w-4 text-slate-500" />
+                    Settings
+                  </DropdownMenuItem>
+                </Link>
+
+                <DropdownMenuSeparator />
+
                 <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign out
@@ -208,8 +218,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-7xl p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto bg-slate-50/50">
+          <div className="mx-auto max-w-7xl p-4 lg:p-6 h-full">
             {children}
           </div>
         </main>
