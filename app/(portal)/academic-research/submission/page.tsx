@@ -1,5 +1,4 @@
 "use client"
-
 import { supabase } from "@/lib/supabase"
 import { useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,10 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
 import { academicSchema, type AcademicEntry, type AcademicFormData } from "@/lib/types"
-import { addEntry, getEntriesByType, getCurrentUser } from "@/lib/store"
+import { addEntry, getEntriesByType, getCurrentUser, users } from "@/lib/store"
 import { BookOpen, Plus, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 
@@ -20,28 +20,24 @@ export default function AcademicResearchPage() {
   const [showForm, setShowForm] = useState(false)
   const [step, setStep] = useState(1)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState<Partial<AcademicFormData>>({
     publicationType: "journal_article",
     year: "2026",
     department: "AI & Data Science",
   })
 
-  // Safely load entries and user to prevent TypeScript build crashes
-  const entries = (getEntriesByType("academic") || []) as AcademicEntry[]
+  const entries = getEntriesByType("academic") as AcademicEntry[]
   const user = getCurrentUser()
 
   const refresh = useCallback(() => setTick((t) => t + 1), [])
 
-  function updateField(field: keyof AcademicFormData, value: string) {
+  function updateField(field: string, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }))
-    if (errors[field]) {
-      setErrors((prev) => {
-        const next = { ...prev }
-        delete next[field]
-        return next
-      })
-    }
+    setErrors((prev) => {
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
   }
 
   function validateStep(s: number): boolean {
@@ -53,16 +49,16 @@ export default function AcademicResearchPage() {
 
     const fieldErrors: Record<string, string> = {}
     result.error.errors.forEach((e) => {
-      if (e.path[0]) {
-        fieldErrors[e.path[0].toString()] = e.message
-      }
+      const path = e.path[0] as string
+      fieldErrors[path] = e.message
     })
 
+    // Only check fields for the current step
     const step1Fields = ["title", "authors", "publicationType", "year", "department"]
     const step2Fields = ["abstract", "keywords"]
+
     const relevantFields = s === 1 ? step1Fields : step2Fields
     const relevantErrors: Record<string, string> = {}
-
     relevantFields.forEach((f) => {
       if (fieldErrors[f]) relevantErrors[f] = fieldErrors[f]
     })
@@ -72,70 +68,63 @@ export default function AcademicResearchPage() {
   }
 
   async function handleSaveDraft() {
-    setIsSubmitting(true)
-
     const result = academicSchema.safeParse(formData)
     if (!result.success) {
       const fieldErrors: Record<string, string> = {}
       result.error.errors.forEach((e) => {
-        if (e.path[0]) fieldErrors[e.path[0].toString()] = e.message
+        fieldErrors[e.path[0] as string] = e.message
       })
       setErrors(fieldErrors)
       toast.error("Please fix the validation errors before saving.")
-      setIsSubmitting(false)
       return
     }
 
-    try {
-      const { data, error } = await supabase
-        .from("portal_data")
-        .insert([
-          {
-            title: result.data.title,
-            authors: result.data.authors,
-            publication_type: result.data.publicationType,
-            journal: result.data.journal || "",
-            publication_year: result.data.year,
-            doi: result.data.doi || "",
-            department: result.data.department,
-            abstract: result.data.abstract,
-            keywords: result.data.keywords,
-            status: "draft",
-          },
-        ])
-        .select()
+    // --- SUPABASE DATABASE INSERT ---
+    const { error } = await supabase
+      .from('portal_data')
+      .insert([
+        {
+          title: result.data.title,
+          authors: result.data.authors,
+          publication_type: result.data.publicationType,
+          journal: result.data.journal || "",
+          publication_year: result.data.year,
+          doi: result.data.doi || "",
+          department: result.data.department,
+          abstract: result.data.abstract,
+          keywords: result.data.keywords,
+          status: "draft"
+        }
+      ])
 
-      if (error) throw error
-
-      const entry: AcademicEntry = {
-        id: data?.[0]?.id?.toString() || `a${Date.now()}`,
-        type: "academic",
-        status: "draft",
-        createdBy: user?.id || "unknown_user",
-        createdAt: new Date().toISOString().split("T")[0],
-        updatedAt: new Date().toISOString().split("T")[0],
-        ...result.data,
-      }
-
-      addEntry(entry)
-      toast.success("Entry saved to database successfully!")
-
-      setShowForm(false)
-      setStep(1)
-      setFormData({
-        publicationType: "journal_article",
-        year: "2026",
-        department: "AI & Data Science",
-      })
-      setErrors({})
-      refresh()
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : "Database Error"
-      console.error("Supabase Database Error:", err)
-      toast.error(errorMessage || "Failed to save data. Check the console.")
-    } finally {
-      setIsSubmitting(false)
+    if (error) {
+      console.error("Supabase error:", error)
+      toast.error("Failed to save to database. Check console.")
+      return
     }
+    // --------------------------------
+
+    const entry: AcademicEntry = {
+      id: `a${Date.now()}`,
+      type: "academic",
+      status: "draft",
+      createdBy: user.id,
+      createdAt: new Date().toISOString().split("T")[0],
+      updatedAt: new Date().toISOString().split("T")[0],
+      ...result.data,
+    }
+
+    addEntry(entry)
+    toast.success("Entry saved to database successfully.")
+    setShowForm(false)
+    setStep(1)
+    setFormData({
+      publicationType: "journal_article",
+      year: "2026",
+      department: "AI & Data Science",
+    })
+    setErrors({})
+    refresh()
   }
 
   function FieldError({ field }: { field: string }) {
@@ -166,6 +155,7 @@ export default function AcademicResearchPage() {
         </Button>
       </div>
 
+      {/* Submission Form */}
       {showForm && (
         <Card>
           <CardHeader>
@@ -307,8 +297,8 @@ export default function AcademicResearchPage() {
                     Next Step
                   </Button>
                 ) : (
-                  <Button onClick={handleSaveDraft} disabled={isSubmitting}>
-                    {isSubmitting ? "Saving..." : "Save as Draft"}
+                  <Button onClick={handleSaveDraft}>
+                    Save as Draft
                   </Button>
                 )}
               </div>
@@ -335,7 +325,7 @@ export default function AcademicResearchPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <StatusBadge status={entry.status} />
                       <span className="text-xs text-muted-foreground capitalize">
-                        {String(entry.publicationType).replace(/_/g, " ")}
+                        {entry.publicationType.replace(/_/g, " ")}
                       </span>
                     </div>
                     <h3 className="text-sm font-medium leading-relaxed">{entry.title}</h3>
@@ -351,7 +341,7 @@ export default function AcademicResearchPage() {
                       </p>
                     )}
                   </div>
-                  <WorkflowActions entry={entry} user={user!} onUpdate={refresh} />
+                  <WorkflowActions entry={entry} user={user} onUpdate={refresh} />
                 </div>
               </div>
             ))}
