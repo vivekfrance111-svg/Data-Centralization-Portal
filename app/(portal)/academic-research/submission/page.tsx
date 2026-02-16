@@ -4,52 +4,38 @@ import { supabase } from "@/lib/supabase"
 import { useState, useCallback, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
-import { academicSchema, type AcademicEntry, type AcademicFormData } from "@/lib/types"
+import { type AcademicEntry } from "@/lib/types"
 import { BookOpen, Plus, Loader2, LogOut, UserCircle } from "lucide-react"
 import { toast } from "sonner"
 import AuthGuard from "@/components/auth-guard"
 
 export default function AcademicResearchPage() {
-  const [showForm, setShowForm] = useState(false)
-  const [step, setStep] = useState(1)
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [entries, setEntries] = useState<AcademicEntry[]>([])
   const [isLoadingData, setIsLoadingData] = useState(true)
+  const [showForm, setShowForm] = useState(false)
   
-  // NEW: Added isReady to prevent "Client-side exception"
-  const [isReady, setIsReady] = useState(false)
-  const [userRole, setUserRole] = useState<string>("author")
+  // AUTH STATE
+  const [userRole, setUserRole] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string>("")
-
-  const [formData, setFormData] = useState<Partial<AcademicFormData>>({
-    publicationType: "journal_article",
-    year: "2026",
-    department: "AI & Data Science",
-  })
 
   const fetchUserPermissions = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setUserEmail(user.email || "")
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from("user_roles")
           .select("role")
           .eq("email", user.email)
           .maybeSingle()
         
-        if (error) console.error("Permission Error:", error)
+        // Clean and set role
         setUserRole(data?.role?.trim().toLowerCase() || "author")
       }
     } catch (err) {
       setUserRole("author")
-    } finally {
-      setIsReady(true) // Now the UI is safe to show
     }
   }, [])
 
@@ -81,7 +67,7 @@ export default function AcademicResearchPage() {
       }))
       setEntries(formatted)
     } catch (err) {
-      toast.error("Data fetch failed.")
+      console.error(err)
     } finally {
       setIsLoadingData(false)
     }
@@ -91,16 +77,6 @@ export default function AcademicResearchPage() {
     fetchUserPermissions()
     fetchEntries()
   }, [fetchUserPermissions, fetchEntries])
-
-  // SAFETY: If auth isn't ready, don't even try to render the page
-  if (!isReady) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
-        <Loader2 className="h-10 w-10 animate-spin text-primary/40" />
-        <p className="mt-4 text-sm text-slate-400 font-medium">Authorizing access...</p>
-      </div>
-    )
-  }
 
   return (
     <AuthGuard>
@@ -112,7 +88,7 @@ export default function AcademicResearchPage() {
               <h1 className="text-xl font-bold">Research Portal</h1>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <UserCircle className="h-3 w-3" /> {userEmail} 
-                <span className="bg-primary/10 text-primary px-2 py-0.5 rounded uppercase font-bold">{userRole}</span>
+                {userRole && <span className="bg-primary/10 text-primary px-2 py-0.5 rounded uppercase font-bold">{userRole}</span>}
               </div>
             </div>
           </div>
@@ -129,7 +105,7 @@ export default function AcademicResearchPage() {
             </Button>
           </CardHeader>
           <CardContent className="p-0">
-            {isLoadingData ? (
+            {isLoadingData || !userRole ? (
               <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-primary" /></div>
             ) : (
               <div className="divide-y">
@@ -140,8 +116,8 @@ export default function AcademicResearchPage() {
                       <h3 className="font-bold">{entry.title}</h3>
                       <p className="text-xs text-muted-foreground">{entry.authors} • {entry.year}</p>
                     </div>
-                    {/* Safety-wrapped user object */}
-                    <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
+                    {/* PASSING JUST THE STRING TO PREVENT CRASH */}
+                    <WorkflowActions entry={entry} userRole={userRole} onUpdate={fetchEntries} />
                   </div>
                 ))}
               </div>

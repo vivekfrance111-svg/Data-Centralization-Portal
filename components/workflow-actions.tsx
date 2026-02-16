@@ -5,11 +5,11 @@ import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Check, Send, X, ArrowUpCircle } from "lucide-react"
 
-// Defaulting user to a guest/author role to prevent crashes
-export function WorkflowActions({ entry, user = { role: "author" }, onUpdate }: any) {
+export function WorkflowActions({ entry, userRole = "author", onUpdate }: any) {
   
+  // Safety checks to prevent undefined errors
   const status = entry?.status || "draft"
-  const currentRole = user?.role?.toLowerCase() || "author"
+  const currentRole = String(userRole).toLowerCase()
 
   async function updateStatus(newStatus: string) {
     try {
