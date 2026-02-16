@@ -3,55 +3,32 @@
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
-import { Check, Send, X, ArrowUpCircle } from "lucide-react"
+import { Check, Send } from "lucide-react"
 
-export function WorkflowActions({ entry, userRole = "author", onUpdate }: any) {
+export function WorkflowActions({ entry, userRole = "admin", onUpdate }: any) {
   
-  // Safety checks to prevent undefined errors
-  const status = entry?.status || "draft"
-  const currentRole = String(userRole).toLowerCase()
-
   async function updateStatus(newStatus: string) {
-    try {
-      const { error } = await supabase
-        .from("portal_data")
-        .update({ status: newStatus })
-        .eq("id", entry.id)
+    const { error } = await supabase
+      .from("portal_data")
+      .update({ status: newStatus })
+      .eq("id", entry.id)
 
-      if (error) throw error
-      toast.success("Status Updated")
+    if (!error) {
+      toast.success("Updated")
       onUpdate()
-    } catch (err) {
-      toast.error("Update failed")
     }
   }
 
-  const isAdmin = currentRole === "admin"
-  const isReviewer = currentRole === "reviewer" || isAdmin
-  const isAuthor = currentRole === "author" || isAdmin
-
   return (
     <div className="flex items-center gap-2">
-      {status === "draft" && isAuthor && (
+      {entry.status === "draft" && (
         <Button size="sm" variant="outline" onClick={() => updateStatus("pending_review")}>
-          <Send className="w-4 h-4 mr-1 text-blue-500" /> Submit
+          <Send className="w-4 h-4 mr-1" /> Submit
         </Button>
       )}
-
-      {status === "pending_review" && isReviewer && (
-        <>
-          <Button size="sm" variant="outline" onClick={() => updateStatus("draft")}>
-            <X className="w-4 h-4 mr-1 text-red-500" /> Reject
-          </Button>
-          <Button size="sm" className="bg-green-600 text-white hover:bg-green-700" onClick={() => updateStatus("published")}>
-            <Check className="w-4 h-4 mr-1" /> Publish
-          </Button>
-        </>
-      )}
-
-      {status === "published" && isAdmin && (
-        <Button size="sm" variant="ghost" onClick={() => updateStatus("draft")}>
-          <ArrowUpCircle className="w-4 h-4 mr-1 text-muted-foreground" /> Revert
+      {entry.status === "pending_review" && (
+        <Button size="sm" className="bg-green-600 text-white" onClick={() => updateStatus("published")}>
+          <Check className="w-4 h-4 mr-1" /> Publish
         </Button>
       )}
     </div>
