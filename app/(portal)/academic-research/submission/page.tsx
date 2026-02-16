@@ -7,23 +7,21 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { StatusBadge } from "@/components/status-badge"
 import { WorkflowActions } from "@/components/workflow-actions"
 import { academicSchema, type AcademicEntry, type AcademicFormData } from "@/lib/types"
-import { BookOpen, Plus, AlertCircle, Loader2, LogOut } from "lucide-react"
+import { BookOpen, Plus, Loader2, LogOut, UserCircle, ShieldCheck, ChevronRight, LayoutGrid } from "lucide-react"
 import { toast } from "sonner"
 import AuthGuard from "@/components/auth-guard"
 
 export default function AcademicResearchPage() {
   const [showForm, setShowForm] = useState(false)
   const [step, setStep] = useState(1)
-  const [errors, setErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [entries, setEntries] = useState<AcademicEntry[]>([])
   const [isLoadingData, setIsLoadingData] = useState(true)
   
-  // REAL AUTH STATE
+  // Auth State
   const [userRole, setUserRole] = useState<string>("author")
   const [userEmail, setUserEmail] = useState<string>("")
 
@@ -33,21 +31,38 @@ export default function AcademicResearchPage() {
     department: "AI & Data Science",
   })
 
-  // FETCH USER ROLE FROM DATABASE
+  // CRASH-PROOF ROLE FETCHING
   const fetchUserPermissions = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      setUserEmail(user.email || "")
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("email", user.email)
-        .single()
-      
-      if (roleData) setUserRole(roleData.role)
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError) throw authError
+
+      if (user) {
+        setUserEmail(user.email || "")
+        
+        // Using maybeSingle() prevents the 406 crash if the row doesn't exist
+        const { data: roleData, error: dbError } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("email", user.email)
+          .maybeSingle() 
+        
+        if (dbError) {
+          console.error("Table error (User roles might be missing):", dbError.message)
+          setUserRole("author")
+        } else if (roleData && roleData.role) {
+          setUserRole(roleData.role.trim().toLowerCase())
+        } else {
+          setUserRole("author")
+        }
+      }
+    } catch (err) {
+      console.error("Auth process error:", err)
+      setUserRole("author")
     }
   }, [])
 
+  // CRASH-PROOF DATA FETCHING
   const fetchEntries = useCallback(async () => {
     try {
       setIsLoadingData(true)
@@ -57,28 +72,30 @@ export default function AcademicResearchPage() {
         .order("created_at", { ascending: false })
 
       if (error) throw error
+      
       if (data) {
+        // Safe mapping to prevent null reference crashes
         const formatted: AcademicEntry[] = data.map((item) => ({
-          id: item.id.toString(),
+          id: item.id?.toString() || Math.random().toString(),
           type: "academic",
           status: item.status || "draft",
-          title: item.title,
-          authors: item.authors,
-          publicationType: item.publication_type,
-          year: item.publication_year,
-          department: item.department,
-          journal: item.journal,
-          abstract: item.abstract,
-          keywords: item.keywords,
+          title: item.title || "Untitled",
+          authors: item.authors || "Unknown",
+          publicationType: item.publication_type || "journal_article",
+          year: item.publication_year || "2026",
+          department: item.department || "Unassigned",
+          journal: item.journal || "",
+          abstract: item.abstract || "",
+          keywords: item.keywords || "",
           createdBy: item.created_by || "user",
-          createdAt: item.created_at.split("T")[0],
-          updatedAt: item.created_at.split("T")[0],
+          createdAt: item.created_at ? item.created_at.split("T")[0] : "",
+          updatedAt: item.created_at ? item.created_at.split("T")[0] : "",
         }))
         setEntries(formatted)
       }
     } catch (err) {
-      console.error(err)
-      toast.error("Failed to load data.")
+      console.error("Data fetch error:", err)
+      toast.error("Failed to load submissions.")
     } finally {
       setIsLoadingData(false)
     }
@@ -101,8 +118,9 @@ export default function AcademicResearchPage() {
   async function handleSaveDraft() {
     setIsSubmitting(true)
     const result = academicSchema.safeParse(formData)
+    
     if (!result.success) {
-      toast.error("Validation failed.")
+      toast.error("Please fill in all required fields.")
       setIsSubmitting(false)
       return
     }
@@ -117,11 +135,14 @@ export default function AcademicResearchPage() {
       }])
 
       if (error) throw error
-      toast.success("Draft saved!")
+      toast.success("Draft saved successfully!")
       setShowForm(false)
+      setStep(1)
+      setFormData({ publicationType: "journal_article", year: "2026", department: "AI & Data Science" })
       fetchEntries()
     } catch (err) {
-      toast.error("Save failed.")
+      console.error("Save error:", err)
+      toast.error("Failed to save draft.")
     } finally {
       setIsSubmitting(false)
     }
@@ -129,83 +150,132 @@ export default function AcademicResearchPage() {
 
   return (
     <AuthGuard>
-      <div className="flex flex-col gap-6 p-4 max-w-6xl mx-auto">
-        <div className="flex items-center justify-between bg-white p-4 rounded-lg border shadow-sm">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <BookOpen className="h-6 w-6 text-primary" />
-              Academic Portal
-            </h1>
-            <p className="text-sm text-muted-foreground">Logged in as: {userEmail} ({userRole})</p>
+      <div className="flex flex-col gap-8 p-6 md:p-10 max-w-7xl mx-auto min-h-screen bg-slate-50/50">
+        
+        {/* Professional Navbar */}
+        <nav className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border shadow-sm border-slate-200">
+          <div className="flex items-center gap-4">
+            <div className="bg-primary/10 p-3 rounded-xl">
+              <BookOpen className="h-7 w-7 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Academic Portal</h1>
+              <div className="flex items-center gap-3 mt-1">
+                <span className="flex items-center gap-1.5 text-sm text-slate-500 font-medium">
+                  <UserCircle className="h-4 w-4" /> {userEmail || "Loading..."}
+                </span>
+                <span className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border border-indigo-100">
+                  <ShieldCheck className="h-3 w-3" /> {userRole}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleLogout}>
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <Button variant="outline" className="flex-1 md:flex-none" onClick={handleLogout}>
               <LogOut className="h-4 w-4 mr-2" /> Logout
             </Button>
-            <Button onClick={() => setShowForm(!showForm)}>
-              <Plus className="h-4 w-4 mr-1" /> New Entry
+            <Button className="flex-1 md:flex-none bg-primary hover:bg-primary/90 shadow-md" onClick={() => setShowForm(!showForm)}>
+              <Plus className="h-4 w-4 mr-1" /> New Submission
             </Button>
           </div>
-        </div>
+        </nav>
 
+        {/* Multi-Step Submission Form */}
         {showForm && (
-          <Card className="border-primary/20 shadow-md">
-            <CardHeader>
-              <CardTitle>Step {step} of 2</CardTitle>
+          <Card className="border-primary/20 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-500">
+            <CardHeader className="bg-slate-50/50 border-b">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-xl font-bold">New Research Submission</CardTitle>
+                <div className="flex gap-2">
+                  <div className={`h-2 w-12 rounded-full ${step === 1 ? 'bg-primary' : 'bg-slate-200'}`} />
+                  <div className={`h-2 w-12 rounded-full ${step === 2 ? 'bg-primary' : 'bg-slate-200'}`} />
+                </div>
+              </div>
+              <CardDescription>Step {step}: {step === 1 ? "Basic Publication Info" : "Abstract & Metadata"}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-8">
               {step === 1 ? (
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="md:col-span-2 space-y-2">
-                        <Label>Title *</Label>
-                        <Input value={formData.title || ""} onChange={(e) => updateField("title", e.target.value)} />
+                        <Label className="text-sm font-semibold">Full Title *</Label>
+                        <Input className="h-12" placeholder="The impact of AI on modern education..." value={formData.title || ""} onChange={(e) => updateField("title", e.target.value)} />
                     </div>
                     <div className="space-y-2">
-                        <Label>Authors *</Label>
-                        <Input value={formData.authors || ""} onChange={(e) => updateField("authors", e.target.value)} />
+                        <Label className="text-sm font-semibold">Lead Authors *</Label>
+                        <Input className="h-12" placeholder="John Doe, Jane Smith" value={formData.authors || ""} onChange={(e) => updateField("authors", e.target.value)} />
                     </div>
                     <div className="space-y-2">
-                        <Label>Year *</Label>
-                        <Input value={formData.year || ""} onChange={(e) => updateField("year", e.target.value)} />
+                        <Label className="text-sm font-semibold">Publication Year *</Label>
+                        <Input className="h-12" placeholder="2026" value={formData.year || ""} onChange={(e) => updateField("year", e.target.value)} />
                     </div>
                  </div>
               ) : (
-                <div className="space-y-4">
-                    <Label>Abstract *</Label>
-                    <Textarea value={formData.abstract || ""} onChange={(e) => updateField("abstract", e.target.value)} />
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Abstract *</Label>
+                      <Textarea className="min-h-[180px] text-base leading-relaxed" placeholder="Briefly describe your research findings..." value={formData.abstract || ""} onChange={(e) => updateField("abstract", e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Keywords *</Label>
+                      <Input className="h-12" placeholder="Machine Learning, Pedagogy, Ethics" value={formData.keywords || ""} onChange={(e) => updateField("keywords", e.target.value)} />
+                    </div>
                 </div>
               )}
-              <div className="flex justify-end gap-2 mt-6">
-                <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+              <div className="flex justify-end gap-4 mt-10 pt-6 border-t">
+                <Button variant="ghost" onClick={() => { setShowForm(false); setStep(1); }}>Cancel</Button>
                 {step === 1 ? (
-                  <Button onClick={() => setStep(2)}>Next</Button>
+                  <Button className="px-10 h-12" onClick={() => setStep(2)}>Next Step <ChevronRight className="ml-2 h-4 w-4" /></Button>
                 ) : (
-                  <Button onClick={handleSaveDraft} disabled={isSubmitting}>
-                    {isSubmitting ? "Saving..." : "Save Draft"}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="h-12" onClick={() => setStep(1)}>Back</Button>
+                    <Button className="px-10 h-12 shadow-lg" onClick={handleSaveDraft} disabled={isSubmitting}>
+                      {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : "Save Submission"}
+                    </Button>
+                  </div>
                 )}
               </div>
             </CardContent>
           </Card>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Database Submissions</CardTitle>
+        {/* Submissions Registry List */}
+        <Card className="shadow-sm border-slate-200 overflow-hidden">
+          <CardHeader className="bg-white border-b py-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <LayoutGrid className="h-5 w-5 text-slate-400" />
+                <CardTitle className="text-lg font-bold text-slate-800">Research Registry</CardTitle>
+              </div>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{entries.length} Submissions</span>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             {isLoadingData ? (
-              <div className="flex justify-center p-8"><Loader2 className="animate-spin" /></div>
+              <div className="p-24 flex flex-col items-center justify-center gap-4 text-slate-400">
+                <Loader2 className="h-10 w-10 animate-spin text-primary/40" />
+                <p className="text-sm font-medium animate-pulse">Syncing with school database...</p>
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="p-20 text-center text-slate-400 italic bg-slate-50/30">No submissions found in your department.</div>
             ) : (
-              <div className="space-y-4">
+              <div className="divide-y divide-slate-100 bg-white">
                 {entries.map((entry) => (
-                  <div key={entry.id} className="p-4 border rounded-lg flex justify-between items-center hover:bg-muted/10">
-                    <div>
-                      <div className="flex gap-2 mb-1"><StatusBadge status={entry.status} /></div>
-                      <h3 className="font-semibold">{entry.title}</h3>
-                      <p className="text-xs text-muted-foreground">{entry.authors} • {entry.year}</p>
+                  <div key={entry.id} className="p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all hover:bg-slate-50/50">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={entry.status} />
+                        <span className="text-[10px] font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded uppercase">ID-{entry.id.substring(0,6)}</span>
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900 leading-tight group-hover:text-primary transition-colors">{entry.title}</h3>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 font-medium">
+                        <span className="text-slate-900">{entry.authors}</span>
+                        <span className="h-1 w-1 rounded-full bg-slate-300" />
+                        <span>{entry.year}</span>
+                        <span className="h-1 w-1 rounded-full bg-slate-300" />
+                        <span className="text-primary/70">{entry.department}</span>
+                      </div>
                     </div>
-                    {/* Securely passing the role to the buttons */}
+                    {/* Crash-proof passing of user role */}
                     <WorkflowActions entry={entry} user={{ role: userRole }} onUpdate={fetchEntries} />
                   </div>
                 ))}
